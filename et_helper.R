@@ -72,7 +72,7 @@ preprocess.data <- function(d,
                             avg.eyes=TRUE) {
   
   ## drop the .jpg from the stimulus
-  d$stimulus <- str_replace(d$stimulus,pattern=".jpg",replacement="")
+  ##d$stimulus <- str_replace(d$stimulus,pattern=".jpg",replacement="")
   
   ## average the eyes
   if (avg.eyes) {

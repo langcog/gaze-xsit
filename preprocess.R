@@ -24,7 +24,7 @@ for (file.name in files) {
   
   ## these are the two functions that are most meaningful
   d <- read.smi.idf(paste(raw.data.path,file.name,sep=""), header.rows=32)
-  d <- preprocess.data(d)
+  d <- preprocess.data(d) 
   d$subid <- file.name
   
   ## now here's where data get bound together
