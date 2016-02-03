@@ -4,6 +4,7 @@ library(readr)
 library(magrittr)
 library(ggplot2)
 library(tidyr)
+library(lme4)
 
 d <- read_csv("processed_data/processed.csv")
 
@@ -18,10 +19,12 @@ d %<>%
 trialinfo <- read_csv("info/trialinfo.csv")
 
 d %<>% left_join(trialinfo, by = "stimulus")
+d %<>% filter(keep == "y") # keep all data for now
+# d %<>% filter(d$keep == "y" & d$t.stim >= 1.0)
 
 ### analyses
 
-# raw
+#### RAW PLOTS ####
 qplot(x, data=d) + 
   xlim(c(0,1980))
 
@@ -45,21 +48,6 @@ d %<>% mutate(aoi = factor(ifelse(x > 210 & x < 750 & y < 540, "left",
                            ifelse(x > 1170 & x < 1710 & y < 540, "right", 
                                   ifelse(x < 1230 & x > 690 & y > 540, "face", NA)))))
 
-# plots by subject
-qplot(aoi, fill = aoi, 
-      facets = .~ subid, 
-      data = d) 
-
-
-qplot(aoi, fill = aoi, 
-      data = d) 
-
-d_filtered <- d %>% filter(trial.type != "familiar")
-qplot(aoi, fill = aoi, facets = trial.type ~ gaze.condition, data = d_filtered) 
-
-# manipulation check on exposure trials
-# compare the distribution of looking to one vs. both objects 
-# for all participants 
 
 
 all.exp <- d %>% 
@@ -76,8 +64,6 @@ all.exp <- d %>%
   unique() %>%
   left_join(all.exp, by = "subid")
 
-##qplot(data=filter(ss, aoi != "face"), x=aoi, y = Freq, facets = subid ~ shortname,
-##      geom = "bar", stat = "identity", fill = condition)
 
 
 ############ DETERMINE TARGET ON EXPOSURE ################
@@ -216,10 +202,8 @@ rm(trialtotal)
 ##summarise & group by trial
 
 #plots proportion looking to target by trial name across subjects
-qplot(targetprop, 
-      facets = .~ condition, 
-      binwidth = .10,
-      data = exp.looks.to.target) 
+
+
 
 ####### TEST LOOKING RATES ###########
 
@@ -374,6 +358,7 @@ rm(trialtotal)
 
 qplot(targetprop, 
       facets = .~ condition, 
+      binwidth = .1,
       data = test.looks.to.target) 
 
 
@@ -395,24 +380,74 @@ all.looks <- all.exp %>%
 
 ##x-axis: how an individual did on exposure trial
 ##y-axis: how the individual did on test trial
-qplot(x=exptarget, y=testtarget, color = condition, data=all.looks)
+qplot(x=exptarget, y=testtarget, color = condition, 
+      data=all.looks) +
+  facet_grid( . ~ condition) + 
+  geom_smooth(method="loess", span = 1) +
+  theme_bw()
+
+library(langcog)
+ms.looks <- all.looks %>%
+  mutate(exptarget.bin = cut(exptarget, 4)) %>%
+  group_by(exptarget.bin, condition) %>%
+  multi_boot_standard(column = "testtarget")
+
+qplot(exptarget.bin, mean, ymin = ci_lower, ymax = ci_upper, 
+      group = condition, col = condition, geom = c("line","pointrange"),
+      position = position_dodge(width = .05),
+      data= ms.looks) +
+  geom_hline(yintercept = .5, lty = 2) + 
+  theme_bw() +
+  scale_colour_solarized() + 
+  ylim(c(0,1))
+  
+
+
+#### STATISTICAL MODELS ###
+head(all.looks)
+
+# more conservative model - "maximal random effect structure"
+summary(lmer(testtarget ~ exptarget * condition + (exptarget | subid), 
+             data=all.looks))
+
+summary(lmer(testtarget ~ exptarget * condition + (exptarget | subid), 
+             data=subset(all.looks, 
+                         exptarget > 0 & exptarget < 1 & testtarget > 0 & testtarget < 1)))
+
+# less conservative model - no random effect of subject
+summary(lmer(testtarget ~ exptarget * condition + (1 | subid), 
+             data=all.looks))
 
 
 ####### TIMECOURSE ANALYSES #######
+
+
 ms <- d %>%
+  filter(trial.type != "familiar") %>%
   mutate(t.stim.binned = round(t.stim * 10) / 10) %>%
-  group_by(t.stim.binned, gaze.condition) %>%
+  group_by(t.stim.binned, gaze.condition, trial.type) %>%
   summarise(face = mean(aoi == "face", na.rm=TRUE), 
-            left = mean(aoi == "left", na.rm=TRUE),
-            right = mean(aoi == "right", na.rm=TRUE)) %>%
-  gather(stim, prop, face, left, right)
+            correct = sum(target_object == aoi, na.rm=TRUE) /
+              sum(aoi == "left" | aoi == "right", na.rm=TRUE)) %>%
+  gather(stim, prop, correct, face)
 
 qplot(t.stim.binned, prop, col = stim, 
       geom = "line",
-      facets = ~ gaze.condition, 
+      facets = gaze.condition ~ trial.type, 
       data=ms) + 
   ylim(c(0,1)) +
-  geom_hline(yintercept = .5, lty = 2, col = "black")
+  geom_hline(yintercept = .5, lty = 2, col = "black") + 
+  theme_bw()
+
+
+qplot(t.stim.binned, prop, col = gaze.condition, 
+      geom = "line", group = gaze.condition,
+      data= filter(ms, stim == "correct", trial.type == "test")) + 
+  ylim(c(0,1)) +
+  geom_hline(yintercept = .5, lty = 2, col = "black") + 
+  theme_bw()
+
+
 
 
 
