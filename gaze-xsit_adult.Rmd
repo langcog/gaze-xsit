@@ -13,8 +13,12 @@ library(readr)
 library(magrittr)
 library(ggplot2)
 library(tidyr)
+library(knitr)
+library(langcog)
 library(lme4)
 ```
+
+Load data and filter out unusable participants.
 
 ```{r create mastersheet}
 ## output: d (mastersheet with times, trial, subject, condition, and gazes)
@@ -33,32 +37,101 @@ d %<>%
 trialinfo <- read_csv("info/trialinfo.csv")
 d %<>% left_join(trialinfo, by = "stimulus")
 
-# filter out unusable participants
+# filter out unusable participants 
 d %<>% filter(keep == "y")
 ```
 
-```{r AOI setup}
-## output: all.exp (spreadsheet of exposure trial data)
+Some table or way of keeping track of how many participants were removed and for what reason. 
 
-# label AOIs
-d %<>% mutate(aoi = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
+We remove participants XX who: a) 
+
+### Descriptives 
+
+Goal: get a table with the following information 
+
+* Number of participants in each condition 
+* How long conditions took 
+
+```{r}
+d %>% 
+    select(subid, condition) %>% 
+    unique() %>% 
+    group_by(condition) %>% 
+    summarise(n()) %>% 
+    kable()
+
+d_descrip <- d %>% 
+    group_by(subid) %>%
+    select(subid, shortname, trial.type) %>% 
+    unique() %>% 
+    group_by(subid, trial.type) %>% 
+    summarise(count = n()) 
+
+d_descrip %>% kable()
+```
+
+### Data cleaning/munging
+
+Here we label Areas of Interest (participant_looking_chars) to be Left Picture, Right Picture, and the Center Face.
+
+```{r participant_looking_char setup}
+d %<>% mutate(participant_looking_factor = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
                            ifelse(x > 1170 & x < 1710 & y < 540, "right", 
-                                  ifelse(x < 1230 & x > 690 & y > 540, "face", NA)))))
+                                  ifelse(x < 1230 & x > 690 & y > 540, "face", NA)))),
+              participant_looking_char = as.character(participant_looking_factor))
+```
+
+
+## Munging to get Exposure Trial Performance
+
+Next we create a data frame with just exposure trials for visualization and analysis.
+
+First, we need to get a crosstabs of where particpants were looking during each trial. The 
+target_object variable encodes the object that will appear again during test. It does not 
+have to be the target of gaze. 
+
+```{r}
 # create all.exp, 
 all.exp <- d %>% 
-  filter(trial.type == "exposure" & aoi != "face") %>%
-  xtabs(~aoi + shortname + subid + target_object, .) %>% 
-  as.data.frame() %>%
-  filter(aoi != "face")
-#this is redundant -- look at this
+    filter(trial.type == "exposure" & participant_looking_char != "face") %>%
+    xtabs(~participant_looking_char + shortname + subid + target_object, data = .) %>% 
+    as.data.frame() %>%
+    filter(participant_looking_char != "face")
+
+# add condition and where gaze was directed 
 all.exp <- d %>% 
-  filter(trial.type == "exposure" & aoi != "face") %>%
-  select(subid, condition) %>%
+  filter(trial.type == "exposure" & participant_looking_char != "face") %>%
+  select(subid, condition, look) %>%
   unique() %>%
   left_join(all.exp, by = "subid")
 ```
 
+Add proportion correct looking (looking at the object that will show up again at test) and
+proportion gaze following which is looking at the target of gaze for participants in the gaze
+condition.
+
+TODO: fix proprotion correct computations 
+
+```{r}
+all.exp %<>% 
+    mutate(freq_correct = ifelse(target_object == participant_looking_char, TRUE, FALSE),
+           freq_gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
+           
+```
+
+TODO:
+
+Sanity check: 
+* Proportion of looks to objects in No Gaze exposure trials should be 50-50 across all trials.
+* Proprotion gaze following in the gaze condition: we predict > 80% looking to the target of gaze
+
 ```{r exposure ng}
+tmp <- all.exp %>% 
+    group_by(condition, participant_looking_char, subid, look) %>% 
+    summarise(looking = sum(Freq)) 
+```
+
+```{r}
 #create table for looks to target by trial name (exposure only)
 exp.looks.to.target <- all.exp%>%
   select(shortname, condition) %>%
@@ -78,11 +151,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(ng.exp, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                  temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                  temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -92,8 +165,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.exp$exptarget[all.exp$subid == sub & all.exp$shortname == trial & 
                      all.exp$target_object == correct_TO] <- target
@@ -110,7 +183,6 @@ for (trial in trials){
 
 #proportion of looks to left object across No Gaze exposure trials
 nsmean <- total.looks / counted.trials
-
 ```
 
 ```{r exposure g}
@@ -129,11 +201,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(g.exp, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                  temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                  temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -143,8 +215,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.exp$exptarget[all.exp$subid == sub & all.exp$shortname == trial & 
                     all.exp$target_object == correct_TO] <- target
@@ -186,23 +258,28 @@ rm(trialmean)
 rm(trialtotal)
 ```
 
+## Munging to get Test Trial Performance
+
+For each pair of trials, success rate is proportion of looking to target object
+in test trial
+
+
 ```{r test looking rates ng}
-#for each pair of trials, success rate is proportion of looking to target object
-#in test trial
-
 all.test <- d %>% 
-  filter(trial.type == "test" & aoi != "face") %>%
-  xtabs(~aoi + shortname + subid + target_object, .) %>% 
+  filter(trial.type == "test" & participant_looking_char != "face") %>%
+  xtabs(~participant_looking_char + shortname + subid + target_object, .) %>% 
   as.data.frame() %>%
-  filter(aoi != "face")
+  filter(participant_looking_char != "face")
 
-
+# add condition variable
 all.test <- d %>% 
-  filter(trial.type == "test" & aoi != "face") %>%
+  filter(trial.type == "test" & participant_looking_char != "face") %>%
   select(subid, condition) %>%
   unique() %>%
   left_join(all.test, by = "subid")
+```
 
+```{r}
 #create table for looks to target by trial name (exposure only)
 test.looks.to.target <- all.test%>%
   select(shortname, condition) %>%
@@ -224,11 +301,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(ng.test, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                    temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                    temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -238,8 +315,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.test$testtarget[all.test$subid == sub & all.test$shortname == trial & 
                      all.test$target_object == correct_TO] <- target
@@ -275,11 +352,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(g.test, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                    temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                    temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -289,8 +366,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.test$testtarget[all.test$subid == sub & all.test$shortname == trial & 
                      all.test$target_object == correct_TO] <- target
@@ -332,12 +409,13 @@ rm(trialmean)
 rm(trialtotal)
 ```
 
+## Visualization and Analysis 
+
 ```{r analysis}
 all.looks <- all.exp %>%
-  left_join(all.test, by = c("subid", "condition", "aoi", "shortname")) %>%
+  left_join(all.test, by = c("subid", "condition", "participant_looking_char", "shortname")) %>%
   select(subid, condition, shortname, exptarget, testtarget) %>%
   unique()
-
 
 ##x-axis: how an individual did on exposure trial
 ##y-axis: how the individual did on test trial
@@ -346,8 +424,9 @@ qplot(x=exptarget, y=testtarget, color = condition,
   facet_grid( . ~ condition) + 
   geom_smooth(method="loess", span = 1) +
   theme_bw()
+```
 
-library(langcog)
+```{r}
 ms.looks <- all.looks %>%
   mutate(exptarget.bin = cut(exptarget, 4)) %>%
   group_by(exptarget.bin, condition) %>%
@@ -364,11 +443,34 @@ qplot(exptarget.bin, mean, ymin = ci_lower, ymax = ci_upper,
   
 ```
 
+## Model 
 
-You can also embed plots, for example:
+Question: For each condition, does the amount of time looking at the object during exposure trials predict
+the participants' success (higher accuracy) on test trials? 
 
-```{r, echo=FALSE}
-plot(cars)
+Define Same and Switch trials are inferred based on participant looking during exposure trials. 
+
+* Same trials are 
+* Switch trials are...
+
+
+Predictions: 
+
+* In the gaze condition, participants will allocate more attention to the target of gaze, and thus perform at chance on 
+"Switch" test trials where the target of gaze is not present. 
+* In the no-gaze condition, participants will allocate equal attention to both objects on exposure trials, and thus perform better on 
+"Switch" test trials.
+* A quantiative relation between the amount of looking during exposure and the success at test. [allocation of attention model]
+* When gaze and no-gaze participants allocate the same amount of attention during exposure, gaze participants will still perform 
+worse that no gaze participants on "Switch" Trials. [social is special model]
+
+Models:
+
+1) Predicting looking behavior (proportion correct or proportion looking to the kept object) based on condition 
+2) Predicting looking behavior based on trial type (Same/Switch binned based on looking behavior during exposure trials)
+
+```{r}
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
