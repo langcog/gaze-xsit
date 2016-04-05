@@ -29,6 +29,7 @@ d <- read_csv("processed_data_adult/processed_adult.csv")
 
 # join subject info
 subinfo <- read_csv("info/subinfo_adult.csv")
+
 d %<>% 
   mutate(subid = gsub(".txt", "", subid)) %>%
   left_join(subinfo)
@@ -72,17 +73,39 @@ d_descrip %>% kable()
 
 ### Data cleaning/munging
 
-Here we label Areas of Interest (participant_looking_chars) to be Left Picture, Right Picture, and the Center Face.
+Here we label Areas of Interest (participant_looking_char) to be Left Picture, Right Picture, and the Center Face. We also add trial number variable.
+
+KM question: where did these AOI numbers come from? 
 
 ```{r participant_looking_char setup}
 d %<>% mutate(participant_looking_factor = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
                            ifelse(x > 1170 & x < 1710 & y < 540, "right", 
-                                  ifelse(x < 1230 & x > 690 & y > 540, "face", NA)))),
+                                  ifelse(x < 1230 & x > 690 & y > 540, "face", "away")))),
               participant_looking_char = as.character(participant_looking_factor))
+
+# add trial numbers
+trial_num <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
+d %<>% 
+    select(subid, shortname) %>% 
+    unique() %>% 
+    group_by(subid) %>% 
+    cbind(trial_num) %>% 
+    left_join(., d, by = c("subid", "shortname"))
 ```
 
+Add correct column for exposure and test trials. A time slice is correct if the participant looked 
+at the object that was kept from exposure to test.
 
-## Munging to get Exposure Trial Performance
+We also add a column encoding whether the participant looked at the gaze target during exposure trials. 
+This is only relevant for the gaze condition. In the no-gaze condition, each time slice will be False.
+
+```{r}
+d %<>% 
+    mutate(correct = ifelse(target_object == participant_looking_char, TRUE, FALSE),
+           gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
+```
+
+## Munging to get performance on exposure trials 
 
 Next we create a data frame with just exposure trials for visualization and analysis.
 
@@ -90,38 +113,33 @@ First, we need to get a crosstabs of where particpants were looking during each 
 target_object variable encodes the object that will appear again during test. It does not 
 have to be the target of gaze. 
 
+Note the use of the complete() function from the tidyr package for completing missing combinations of data. It turns implicitly missing values into explicitly missing values.
+
 ```{r}
-# create all.exp, 
+# create exposure trial data frame
 all.exp <- d %>% 
-    filter(trial.type == "exposure" & participant_looking_char != "face") %>%
-    xtabs(~participant_looking_char + shortname + subid + target_object, data = .) %>% 
-    as.data.frame() %>%
-    filter(participant_looking_char != "face")
+    filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
+    group_by(subid, trial_num, condition, participant_looking_char) %>% 
+    summarise(count = n()) %>% 
+    ungroup() %>% 
+    complete(subid, trial_num, participant_looking_char, 
+             fill = list(count = 0)) %>%
+    arrange(subid) %>% 
+    select(-condition) 
 
 # add condition and where gaze was directed 
 all.exp <- d %>% 
   filter(trial.type == "exposure" & participant_looking_char != "face") %>%
-  select(subid, condition, look) %>%
+  select(subid, condition, trial_num, look) %>%
   unique() %>%
-  left_join(all.exp, by = "subid")
+  left_join(all.exp, by = c("subid", "trial_num"))
 ```
 
 Add proportion correct looking (looking at the object that will show up again at test) and
 proportion gaze following which is looking at the target of gaze for participants in the gaze
 condition.
 
-TODO: fix proprotion correct computations 
-
-```{r}
-all.exp %<>% 
-    mutate(freq_correct = ifelse(target_object == participant_looking_char, TRUE, FALSE),
-           freq_gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
-           
-```
-
-TODO:
-
-Sanity check: 
+TODO: Sanity check: 
 * Proportion of looks to objects in No Gaze exposure trials should be 50-50 across all trials.
 * Proprotion gaze following in the gaze condition: we predict > 80% looking to the target of gaze
 
