@@ -6,10 +6,10 @@ library(ggplot2)
 library(tidyr)
 library(lme4)
 
-d <- read_csv("processed_data/processed.csv")
+d <- read_csv("processed_data_adult/processed_adult.csv")
 
 ### merge in subject info
-subinfo <- read_csv("info/subinfo.csv")
+subinfo <- read_csv("info/subinfo_adult_new.csv")
 
 d %<>% 
   mutate(subid = gsub(".txt", "", subid)) %>%
@@ -19,7 +19,7 @@ d %<>%
 trialinfo <- read_csv("info/trialinfo.csv")
 
 d %<>% left_join(trialinfo, by = "stimulus")
-d %<>% filter(keep == "y") # keep all data for now
+#d %<>% filter(keep == "y") # keep all data for now
 # d %<>% filter(d$keep == "y" & d$t.stim >= 1.0)
 
 ### analyses
@@ -55,6 +55,8 @@ all.exp <- d %>%
   xtabs(~aoi + shortname + subid + target_object, .) %>% 
   as.data.frame() %>%
   filter(aoi != "face")
+
+
 
 ##plyr - drop equals false
 
@@ -123,7 +125,7 @@ for (trial in trials){
 }
 
 #proportion of looks to left object across No Gaze exposure trials
-nsmean <- total.looks / counted.trials #currently .499
+nsmean <- total.looks / counted.trials #currently .493
 
 
 #gaze: proportion of looking to object of gaze for each trial
@@ -210,17 +212,12 @@ rm(trialtotal)
 #for each pair of trials, success rate is proportion of looking to target object
 #in test trial
 
-#1: just get base success rate
-#2: plot base success rate by gaze vs no gaze
-#3: further break it up to reflect whether or not they looked at target in exposure
-
 all.test <- d %>% 
   filter(trial.type == "test" & aoi != "face") %>%
   xtabs(~aoi + shortname + subid + target_object, .) %>% 
   as.data.frame() %>%
   filter(aoi != "face")
 
-##plyr - drop equals false
 
 all.test <- d %>% 
   filter(trial.type == "test" & aoi != "face") %>%
@@ -237,10 +234,7 @@ test.looks.to.target <- all.test%>%
 ng.test <- all.test %>%
   filter(condition == "nogaze")
 
-#mark naive participants in doc
-#eventually - amount of time spent looking at kept object
-#correct object is one kept
-#slack help channel
+
 
 subs <- unique(ng.test$subid)
 trials <- unique(ng.test$shortname)
@@ -283,7 +277,7 @@ for (trial in trials){
 }
 
 #proportion of looks to left object across No Gaze exposure trials
-ntmean <- nttotal / counted.trials #currently .499
+ntmean <- nttotal / counted.trials #currently .60
 
 
 #gaze: proportion of looking to object of gaze for each trial
@@ -367,11 +361,6 @@ qplot(targetprop,
 #"same": looked more at target object on exposure
 #"switch": looked more at non-target object on exposure
 
-##dealing with same trials only, should see a reasonably high rate of success on 
-##test trials
-
-
-
 all.looks <- all.exp %>%
   left_join(all.test, by = c("subid", "condition", "aoi", "shortname")) %>%
   select(subid, condition, shortname, exptarget, testtarget) %>%
@@ -390,7 +379,7 @@ library(langcog)
 ms.looks <- all.looks %>%
   mutate(exptarget.bin = cut(exptarget, 4)) %>%
   group_by(exptarget.bin, condition) %>%
-  multi_boot_standard(column = "testtarget")
+  multi_boot_standard(column = "testtarget", na.rm = TRUE)
 
 qplot(exptarget.bin, mean, ymin = ci_lower, ymax = ci_upper, 
       group = condition, col = condition, geom = c("line","pointrange"),
@@ -405,7 +394,7 @@ qplot(exptarget.bin, mean, ymin = ci_lower, ymax = ci_upper,
 
 #### STATISTICAL MODELS ###
 head(all.looks)
-
+in
 # more conservative model - "maximal random effect structure"
 summary(lmer(testtarget ~ exptarget * condition + (exptarget | subid), 
              data=all.looks))
