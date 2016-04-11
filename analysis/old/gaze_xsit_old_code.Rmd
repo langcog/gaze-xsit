@@ -1,64 +1,13 @@
 ---
-title: "gaze-xsit_adult"
-author: "Allison Dods"
-date: "February 2, 2016"
+title: "gaze-xsit-old"
+author: "Kyle MacDonald"
+date: "April 11, 2016"
 output: html_document
 ---
 
+## Old code for gaze-xsit munging and analysis
 
-```{r setup} 
-rm(list = ls())
-library(dplyr)
-library(readr)
-library(magrittr)
-library(ggplot2)
-library(tidyr)
-library(lme4)
-```
-
-```{r create mastersheet}
-## output: d (mastersheet with times, trial, subject, condition, and gazes)
-## input: processed data spreadsheet, subject info spreadsheet, trial info
-
-#read in processed data
-d <- read_csv("processed_data_adult/processed_adult.csv")
-
-# join subject info
-subinfo <- read_csv("info/subinfo_adult.csv")
-d %<>% 
-  mutate(subid = gsub(".txt", "", subid)) %>%
-  left_join(subinfo)
-  
-# join trial info
-trialinfo <- read_csv("info/trialinfo.csv")
-d %<>% left_join(trialinfo, by = "stimulus")
-
-# filter out unusable participants
-d %<>% filter(keep == "y")
-```
-
-```{r AOI setup}
-## output: all.exp (spreadsheet of exposure trial data)
-
-# label AOIs
-d %<>% mutate(aoi = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
-                           ifelse(x > 1170 & x < 1710 & y < 540, "right", 
-                                  ifelse(x < 1230 & x > 690 & y > 540, "face", NA)))))
-# create all.exp, 
-all.exp <- d %>% 
-  filter(trial.type == "exposure" & aoi != "face") %>%
-  xtabs(~aoi + shortname + subid + target_object, .) %>% 
-  as.data.frame() %>%
-  filter(aoi != "face")
-#this is redundant -- look at this
-all.exp <- d %>% 
-  filter(trial.type == "exposure" & aoi != "face") %>%
-  select(subid, condition) %>%
-  unique() %>%
-  left_join(all.exp, by = "subid")
-```
-
-```{r exposure ng}
+```{r}
 #create table for looks to target by trial name (exposure only)
 exp.looks.to.target <- all.exp%>%
   select(shortname, condition) %>%
@@ -78,11 +27,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(ng.exp, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                  temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                  temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -92,8 +41,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.exp$exptarget[all.exp$subid == sub & all.exp$shortname == trial & 
                      all.exp$target_object == correct_TO] <- target
@@ -110,7 +59,6 @@ for (trial in trials){
 
 #proportion of looks to left object across No Gaze exposure trials
 nsmean <- total.looks / counted.trials
-
 ```
 
 ```{r exposure g}
@@ -129,11 +77,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(g.exp, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                  temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                  temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -143,8 +91,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.exp$exptarget[all.exp$subid == sub & all.exp$shortname == trial & 
                     all.exp$target_object == correct_TO] <- target
@@ -186,23 +134,27 @@ rm(trialmean)
 rm(trialtotal)
 ```
 
+### Munging to get Test Trial Performance
+
+For each pair of trials, success rate is proportion of looking to target object
+in test trial
+
 ```{r test looking rates ng}
-#for each pair of trials, success rate is proportion of looking to target object
-#in test trial
-
 all.test <- d %>% 
-  filter(trial.type == "test" & aoi != "face") %>%
-  xtabs(~aoi + shortname + subid + target_object, .) %>% 
+  filter(trial.type == "test" & participant_looking_char != "face") %>%
+  xtabs(~participant_looking_char + shortname + subid + target_object, .) %>% 
   as.data.frame() %>%
-  filter(aoi != "face")
+  filter(participant_looking_char != "face")
 
-
+# add condition variable
 all.test <- d %>% 
-  filter(trial.type == "test" & aoi != "face") %>%
+  filter(trial.type == "test" & participant_looking_char != "face") %>%
   select(subid, condition) %>%
   unique() %>%
   left_join(all.test, by = "subid")
+```
 
+```{r}
 #create table for looks to target by trial name (exposure only)
 test.looks.to.target <- all.test%>%
   select(shortname, condition) %>%
@@ -224,11 +176,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(ng.test, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                    temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                    temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -238,8 +190,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.test$testtarget[all.test$subid == sub & all.test$shortname == trial & 
                      all.test$target_object == correct_TO] <- target
@@ -275,11 +227,11 @@ for (trial in trials){
   for (sub in subs){
     temp <- subset(g.test, shortname == trial & subid == sub)
     left.to.total <- temp[[which(temp$target_object == "left" &
-                                   temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "left" & temp$aoi == "right"), "Freq"]]
+                                   temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "left" & temp$participant_looking_char == "right"), "Freq"]]
     right.to.total <- temp[[which(temp$target_object == "right" &
-                                    temp$aoi == "left"), "Freq"]] +
-      temp[[which(temp$target_object == "right" & temp$aoi == "right"), "Freq"]]
+                                    temp$participant_looking_char == "left"), "Freq"]] +
+      temp[[which(temp$target_object == "right" & temp$participant_looking_char == "right"), "Freq"]]
     if(left.to.total + right.to.total != 0){
       if(left.to.total == 0){
         correct_TO = "right"
@@ -289,8 +241,8 @@ for (trial in trials){
         incorrect_TO = "right"
       }
       temp <- subset(temp, target_object == correct_TO)
-      corr <- temp[[which(temp$aoi == correct_TO), "Freq"]]
-      incorr <- temp[[which(temp$aoi == incorrect_TO), "Freq"]]
+      corr <- temp[[which(temp$participant_looking_char == correct_TO), "Freq"]]
+      incorr <- temp[[which(temp$participant_looking_char == incorrect_TO), "Freq"]]
       target <- corr / (corr+incorr)
       all.test$testtarget[all.test$subid == sub & all.test$shortname == trial & 
                      all.test$target_object == correct_TO] <- target
@@ -332,12 +284,13 @@ rm(trialmean)
 rm(trialtotal)
 ```
 
+### Visualization and Analysis 
+
 ```{r analysis}
 all.looks <- all.exp %>%
-  left_join(all.test, by = c("subid", "condition", "aoi", "shortname")) %>%
+  left_join(all.test, by = c("subid", "condition", "participant_looking_char", "shortname")) %>%
   select(subid, condition, shortname, exptarget, testtarget) %>%
   unique()
-
 
 ##x-axis: how an individual did on exposure trial
 ##y-axis: how the individual did on test trial
@@ -346,8 +299,9 @@ qplot(x=exptarget, y=testtarget, color = condition,
   facet_grid( . ~ condition) + 
   geom_smooth(method="loess", span = 1) +
   theme_bw()
+```
 
-library(langcog)
+```{r}
 ms.looks <- all.looks %>%
   mutate(exptarget.bin = cut(exptarget, 4)) %>%
   group_by(exptarget.bin, condition) %>%
@@ -363,12 +317,3 @@ qplot(exptarget.bin, mean, ymin = ci_lower, ymax = ci_upper,
   ylim(c(0,1))
   
 ```
-
-
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
