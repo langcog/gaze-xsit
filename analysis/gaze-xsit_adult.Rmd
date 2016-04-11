@@ -1,0 +1,262 @@
+---
+title: "Gaze-Xsit Adult"
+author: "Allison Dods & Kyle MacDonald"
+date: "February 2, 2016"
+output: html_document
+---
+
+This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
+
+```{r setup} 
+rm(list = ls())
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+library(langcog)
+library(lme4)
+theme_set(theme_bw())
+```
+
+Load data and filter out unusable participants.
+
+```{r create mastersheet}
+## output: d (mastersheet with times, trial, subject, condition, and gazes)
+## input: processed data spreadsheet, subject info spreadsheet, trial info
+
+#read in processed data
+d <- read_csv("../data/processed_data/processed_adult.csv")
+
+# join subject info
+subinfo <- read_csv("../info/subinfo_adult.csv")
+
+d %<>% 
+  mutate(subid = gsub(".txt", "", subid)) %>%
+  left_join(subinfo)
+  
+# join trial info
+trialinfo <- read_csv("../info/trialinfo.csv")
+d %<>% left_join(trialinfo, by = "stimulus")
+
+# filter out unusable participants 
+d %<>% filter(keep == "y")
+```
+
+Some table or way of keeping track of how many participants were removed and for what reason. 
+
+We remove participants XX who: a) 
+
+## Descriptives 
+
+Goal: get a table with the following information 
+
+* Number of participants in each condition 
+* How long conditions took 
+
+```{r}
+d %>% 
+    select(subid, condition) %>% 
+    unique() %>% 
+    group_by(condition) %>% 
+    summarise(n()) %>% 
+    kable()
+
+d_descrip <- d %>% 
+    group_by(subid) %>%
+    select(subid, shortname, trial.type) %>% 
+    unique() %>% 
+    group_by(subid) %>% 
+    summarise(count = n()) 
+
+d_descrip %>% kable()
+```
+
+## Data cleaning/munging
+
+Here we label Areas of Interest (participant_looking_char) to be Left Picture, Right Picture, and the Center Face. We also add trial number variable.
+
+KM question: where did these AOI numbers come from? 
+
+```{r participant_looking_char setup}
+d %<>% mutate(participant_looking_factor = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
+                           ifelse(x > 1170 & x < 1710 & y < 540, "right", 
+                                  ifelse(x < 1230 & x > 690 & y > 540, "face", "away")))),
+              participant_looking_char = as.character(participant_looking_factor))
+
+# add trial numbers
+trial_num <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
+d %<>% 
+    select(subid, shortname) %>% 
+    unique() %>% 
+    group_by(subid) %>% 
+    cbind(trial_num) %>% 
+    mutate(trial_num = as.character(trial_num)) %>% 
+    left_join(., d, by = c("subid", "shortname"))
+```
+
+Add correct column for exposure and test trials. A time slice is correct if the participant looked 
+at the object that was kept from exposure to test.
+
+We also add a column encoding whether the participant looked at the gaze target during exposure trials. 
+This is only relevant for the gaze condition. In the no-gaze condition, each time slice will be False.
+
+```{r}
+d %<>% mutate(correct = ifelse(target_object == participant_looking_char, TRUE, FALSE),
+              gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
+```
+
+### Trial level filtering
+
+Remove trials with slow RTs? 
+
+Remove trials where ss did not follow gaze on exposure 
+
+### Munging to get performance on exposure trials 
+
+Next we create a data frame with just exposure trials for visualization and analysis.
+
+First, we need to get a crosstabs of where particpants were looking during each trial. The 
+target_object variable encodes the object that will appear again during test. It does not 
+have to be the target of gaze. 
+
+Note the use of the complete() function from the tidyr package for completing missing combinations of data. It turns implicitly missing values into explicitly missing values.
+
+```{r}
+# create exposure trial data frame
+all.exp <- d %>% 
+    filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
+    group_by(subid, trial_num, condition, participant_looking_char) %>% 
+    summarise(count = n()) %>% 
+    ungroup() %>% 
+    complete(subid, trial_num, participant_looking_char, 
+             fill = list(count = 0)) %>%
+    arrange(subid) %>% 
+    select(-condition) # here we remove condition since it has NAs after the complete function 
+
+# add condition and where gaze was directed 
+all.exp <- d %>% 
+    filter(trial.type == "exposure" & participant_looking_char != "face") %>%
+    select(subid, condition, trial_num, look) %>%
+    unique() %>%
+    left_join(all.exp, by = c("subid", "trial_num")) 
+```
+
+Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
+
+```{r}
+ss_correct_exposure <- d %>% 
+    filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
+    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+    summarise(mean_accuracy_exp = mean(correct))
+
+ggplot(aes(x=mean_accuracy_exp, fill = condition),
+       data = ss_correct_exposure) +
+    geom_density(alpha = 0.5) +
+    facet_wrap(~condition) +
+    xlab("Mean Accuracy Scores")
+```
+
+The distribution of correct looking is bimodal for the gaze condition and unimodal for the no-gaze condition. This makes sense and provides evidence that people were following gaze, and that they were distributing attention more broadly in the no-gaze condition. 
+
+Next we want to do a sanity check, that is, we want to make sure people were actually following gaze in the gaze condition.
+
+```{r exposure summary table}
+ss_gf_exposure <- d %>% 
+    filter(trial.type == "exposure", participant_looking_char %in% c("left", "right"), 
+           condition == "gaze") %>%
+    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+    summarise(mean_gf_exp = mean(gaze_follow))
+
+ggplot(aes(x=mean_gf_exp),
+       data = ss_gf_exposure) +
+    geom_histogram() +
+    xlab("Mean Gaze Following Scores")
+
+mean(ss_gf_exposure$mean_gf_exp)
+```
+
+Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze!
+
+### Munging to get performance on test trials
+
+Next we want to get each participant's target looking on test trials. 
+
+```{r}
+ss_acc_test <- d %>% 
+    filter(trial.type == "test", participant_looking_char %in% c("left", "right")) %>%
+    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+    summarise(mean_accuracy = mean(correct))
+
+ggplot(aes(x=mean_accuracy),
+       data = ss_acc_test) +
+    geom_histogram() +
+    xlab("Mean Accuracy") +
+    facet_wrap(~condition)
+```
+
+## Visualizations
+
+Continuous accuracy scores
+
+```{r}
+ss_acc_exp <- d %>% 
+    filter(trial.type != "familiar", participant_looking_char %in% c("left", "right")) %>%
+    group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
+    summarise(mean_accuracy = mean(correct)) %>% 
+    spread(trial.type, mean_accuracy)
+
+# plot the relation between acc on exposure and acc on test
+ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_exp) +
+    geom_point() +
+    geom_smooth(method = "lm")
+```
+
+Bin participants/trials based on exposure looking (same/switch analysis).
+
+```{r}
+ss_acc_exp %<>% mutate(exptarget_bin = cut(exposure, 4)) 
+    
+ms <- ss_acc_exp %>% 
+    group_by(exptarget_bin, condition) %>%
+    multi_boot_standard(column = "test", na.rm = T)
+```
+
+Plot.
+
+```{r}
+ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9))
+```
+
+## Model 
+
+Question: For each condition, does the amount of time looking at the object during exposure trials predict
+the participants' success (higher accuracy) on test trials? 
+
+Define Same and Switch trials are inferred based on participant looking during exposure trials. 
+
+* Same trials are 
+* Switch trials are...
+
+Predictions: 
+
+* In the gaze condition, participants will allocate more attention to the target of gaze, and thus perform at chance on 
+"Switch" test trials where the target of gaze is not present. 
+* In the no-gaze condition, participants will allocate equal attention to both objects on exposure trials, and thus perform better on 
+"Switch" test trials.
+* A quantiative relation between the amount of looking during exposure and the success at test. [allocation of attention model]
+* When gaze and no-gaze participants allocate the same amount of attention during exposure, gaze participants will still perform 
+worse that no gaze participants on "Switch" Trials. [social is special model]
+
+Models:
+
+1) Predicting looking behavior (proportion correct or proportion looking to the kept object) based on condition 
+2) Predicting looking behavior based on trial type (Same/Switch binned based on looking behavior during exposure trials)
+
+```{r}
+
+
+```
