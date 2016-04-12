@@ -1,0 +1,12 @@
+.Rhistory
+.jpg
+.mov
+.png
+.mp4
+.DS_Store
+auth.json
+mturk-and-gmail.txt
+my-own-auth.json
+settings.json
+history.csv
+*cache/
