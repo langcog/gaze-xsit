@@ -5,6 +5,11 @@ date: "February 2, 2016"
 output: html_document
 ---
 
+```{r chunk opts}
+knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+```
+
+
 This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
 
 ```{r setup} 
@@ -60,7 +65,7 @@ d %>%
     select(subid, condition) %>% 
     unique() %>% 
     group_by(condition) %>% 
-    summarise(n()) %>% 
+    summarise(n_subs = n()) %>% 
     kable()
 
 d_descrip <- d %>% 
@@ -68,7 +73,7 @@ d_descrip <- d %>%
     select(subid, shortname, trial.type) %>% 
     unique() %>% 
     group_by(subid) %>% 
-    summarise(count = n()) 
+    summarise(n_trials = n()) 
 
 d_descrip %>% kable()
 ```
@@ -111,7 +116,7 @@ d %<>% mutate(correct = ifelse(target_object == participant_looking_char, TRUE, 
 
 Remove trials with slow RTs? 
 
-Remove trials where ss did not follow gaze on exposure 
+Remove trials where ss did not follow gaze on exposure?
 
 ### Munging to get performance on exposure trials 
 
@@ -171,13 +176,14 @@ ss_gf_exposure <- d %>%
 
 ggplot(aes(x=mean_gf_exp),
        data = ss_gf_exposure) +
-    geom_histogram() +
-    xlab("Mean Gaze Following Scores")
+    geom_density() +
+    xlab("Mean Gaze Following Scores") +
+    ggtitle("Gaze Following on each Trial in Gaze Condition")
 
-mean(ss_gf_exposure$mean_gf_exp)
+paste("Mean Gaze Following Score is:", round(mean(ss_gf_exposure$mean_gf_exp), 2))
 ```
 
-Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze!
+Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze.
 
 ### Munging to get performance on test trials
 
@@ -191,7 +197,7 @@ ss_acc_test <- d %>%
 
 ggplot(aes(x=mean_accuracy),
        data = ss_acc_test) +
-    geom_histogram() +
+    geom_density() +
     xlab("Mean Accuracy") +
     facet_wrap(~condition)
 ```
@@ -201,14 +207,14 @@ ggplot(aes(x=mean_accuracy),
 Continuous accuracy scores
 
 ```{r}
-ss_acc_exp <- d %>% 
+ss_acc_all <- d %>% 
     filter(trial.type != "familiar", participant_looking_char %in% c("left", "right")) %>%
     group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
     summarise(mean_accuracy = mean(correct)) %>% 
     spread(trial.type, mean_accuracy)
 
 # plot the relation between acc on exposure and acc on test
-ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_exp) +
+ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
     geom_point() +
     geom_smooth(method = "lm")
 ```
@@ -216,9 +222,9 @@ ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_exp) +
 Bin participants/trials based on exposure looking (same/switch analysis).
 
 ```{r}
-ss_acc_exp %<>% mutate(exptarget_bin = cut(exposure, 4)) 
+ss_acc_all %<>% mutate(exptarget_bin = cut(exposure, 4)) 
     
-ms <- ss_acc_exp %>% 
+ms <- ss_acc_all %>% 
     group_by(exptarget_bin, condition) %>%
     multi_boot_standard(column = "test", na.rm = T)
 ```
@@ -257,6 +263,13 @@ Models:
 2) Predicting looking behavior based on trial type (Same/Switch binned based on looking behavior during exposure trials)
 
 ```{r}
+m1.cont <- lmer(test ~ exposure * condition + (1|subid), data = ss_acc_all)
+kable(summary(m1.cont)$coef)
+```
 
+Categorical model with exposure looking binned into 4 groups.
 
+```{r}
+m2.cat <- lmer(test ~ exptarget_bin * condition + (1|subid), data = ss_acc_all) 
+kable(summary(m2.cat)$coef)
 ```
