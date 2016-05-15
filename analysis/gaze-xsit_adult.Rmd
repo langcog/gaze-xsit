@@ -1,4 +1,4 @@
----
+mo---
 title: "Gaze-Xsit Adult"
 author: "Allison Dods & Kyle MacDonald"
 date: "February 2, 2016"
@@ -22,6 +22,7 @@ library(tidyr)
 library(knitr)
 library(langcog)
 library(lme4)
+library(directlabels)
 theme_set(theme_bw())
 ```
 
@@ -32,10 +33,10 @@ Load data and filter out unusable participants.
 ## input: processed data spreadsheet, subject info spreadsheet, trial info
 
 #read in processed data
-d <- read_csv("../data/processed_data/processed_adult.csv")
+d <- read_csv("../data/processed_data/processed_adult_data.csv")
 
 # join subject info
-subinfo <- read_csv("../info/subinfo_adult.csv")
+subinfo <- read_csv("../info/subinfo_adult_n.csv")
 
 d %<>% 
   mutate(subid = gsub(".txt", "", subid)) %>%
@@ -46,6 +47,25 @@ trialinfo <- read_csv("../info/trialinfo.csv")
 d %<>% left_join(trialinfo, by = "stimulus")
 
 # filter out unusable participants 
+
+##calculate percentage of non-looks - that is, looking away from the screen entirely.
+##offscreen == TRUE if x is 0 and y is 1050, so higher bad_looks are worse
+d_screentime <- transform(d, offscreen = ((x == 0 & y == 1050) | is.na(x) | is.na(y))) %>%
+  select(subid, t, offscreen) %>%
+  group_by(subid) %>%
+  summarise(bad_looks = sum(offscreen, na.rm = TRUE), total_timeslices = n())
+
+d_screentime <- transform(d_screentime, percent_bad_looks = bad_looks/total_timeslices)
+
+
+##filter out participants more than 1 standard dev away from mean screentime
+a <- sd(d_screentime$percent_bad_looks)
+b <- mean(d_screentime$percent_bad_looks)
+
+d %<>%
+  left_join(d_screentime)
+
+d$keep <- ifelse(d$percent_bad_looks > (a+b), 'n', 'y')
 d %<>% filter(keep == "y")
 ```
 
@@ -67,6 +87,8 @@ d %>%
     group_by(condition) %>% 
     summarise(n_subs = n()) %>% 
     kable()
+
+
 
 d_descrip <- d %>% 
     group_by(subid) %>%
@@ -118,6 +140,7 @@ Remove trials with slow RTs?
 
 Remove trials where ss did not follow gaze on exposure?
 
+
 ### Munging to get performance on exposure trials 
 
 Next we create a data frame with just exposure trials for visualization and analysis.
@@ -131,13 +154,15 @@ Note the use of the complete() function from the tidyr package for completing mi
 ```{r}
 # create exposure trial data frame
 all.exp <- d %>% 
-    filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
-    group_by(subid, trial_num, condition, participant_looking_char) %>% 
+  filter((trial.type == "exposure" & 
+           participant_looking_char %in% c("left", "right"))) %>%
+    group_by(subid, trial_num, condition, participant_looking_char, trial.type) %>% 
     summarise(count = n()) %>% 
     ungroup() %>% 
     complete(subid, trial_num, participant_looking_char, 
              fill = list(count = 0)) %>%
     arrange(subid) %>% 
+  filter(is.na(trial.type) == F) %>% 
     select(-condition) # here we remove condition since it has NAs after the complete function 
 
 # add condition and where gaze was directed 
@@ -146,6 +171,9 @@ all.exp <- d %>%
     select(subid, condition, trial_num, look) %>%
     unique() %>%
     left_join(all.exp, by = c("subid", "trial_num")) 
+
+##double-check exposure trial numbers are consistent across participants
+##all.exp group by participant subid & summarise n()
 ```
 
 Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
@@ -174,11 +202,14 @@ ss_gf_exposure <- d %>%
     group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
     summarise(mean_gf_exp = mean(gaze_follow))
 
+
 ggplot(aes(x=mean_gf_exp),
        data = ss_gf_exposure) +
     geom_density() +
     xlab("Mean Gaze Following Scores") +
     ggtitle("Gaze Following on each Trial in Gaze Condition")
+
+##think about people at low end; histogram
 
 paste("Mean Gaze Following Score is:", round(mean(ss_gf_exposure$mean_gf_exp), 2))
 ```
@@ -215,18 +246,22 @@ ss_acc_all <- d %>%
 
 # plot the relation between acc on exposure and acc on test
 ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
-    geom_point() +
-    geom_smooth(method = "lm")
+    geom_smooth(method = "lm", se = T, size = 2) +
+  scale_color_solarized() +
+  geom_point(alpha = 0.6) 
 ```
 
 Bin participants/trials based on exposure looking (same/switch analysis).
 
 ```{r}
-ss_acc_all %<>% mutate(exptarget_bin = cut(exposure, 4)) 
+ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 4)
     
 ms <- ss_acc_all %>% 
-    group_by(exptarget_bin, condition) %>%
-    multi_boot_standard(column = "test", na.rm = T)
+  group_by(subid, exptarget_bin, condition) %>%
+  summarise(mean_acc = mean(test, na.rm = T)) %>% 
+  group_by(exptarget_bin, condition) %>% 
+  multi_boot_standard(column = "mean_acc", na.rm = T) %>% 
+  filter(is.na(exptarget_bin) == F)
 ```
 
 Plot.

@@ -12,8 +12,8 @@ library(readr)
 library(magrittr)
 source("et_helper.R")
 
-raw.data.path <- "ettest/"
-processed.data.path <- "processed_data_ettest/"
+raw.data.path <- "data_adult/"
+processed.data.path <- "../processed_data/"
 
 ## LOOP TO READ IN FILES
 all.data <- data.frame()
@@ -32,5 +32,5 @@ for (file.name in files) {
 }
 
 ## WRITE DATA OUT TO CSV FOR EASY ACCESS
-write_csv(all.data, paste0(processed.data.path, "processed_ettest.csv")) 
+write_csv(all.data, paste0(processed.data.path, "processed_adult_data.csv")) 
 
