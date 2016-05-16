@@ -88,8 +88,6 @@ d %>%
     summarise(n_subs = n()) %>% 
     kable()
 
-
-
 d_descrip <- d %>% 
     group_by(subid) %>%
     select(subid, shortname, trial.type) %>% 
@@ -205,7 +203,7 @@ ss_gf_exposure <- d %>%
 
 ggplot(aes(x=mean_gf_exp),
        data = ss_gf_exposure) +
-    geom_density() +
+    geom_histogram() +
     xlab("Mean Gaze Following Scores") +
     ggtitle("Gaze Following on each Trial in Gaze Condition")
 
@@ -269,7 +267,8 @@ Plot.
 ```{r}
 ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
     geom_bar(stat = "identity", position = position_dodge()) +
-    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9))
+    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
+  scale_fill_solarized()
 ```
 
 ## Model 
