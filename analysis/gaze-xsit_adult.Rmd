@@ -93,7 +93,8 @@ d_descrip <- d %>%
     select(subid, shortname, trial.type) %>% 
     unique() %>% 
     group_by(subid) %>% 
-    summarise(n_trials = n()) 
+    summarise(n_trials = n()) %>% 
+  left_join(., unique(select(d, subid, gender, age)))
 
 d_descrip %>% kable()
 ```
@@ -204,7 +205,7 @@ ss_gf_exposure <- d %>%
 ggplot(aes(x=mean_gf_exp),
        data = ss_gf_exposure) +
     geom_histogram() +
-    xlab("Mean Gaze Following Scores") +
+    xlab("Mean Gaze Following Score") +
     ggtitle("Gaze Following on each Trial in Gaze Condition")
 
 ##think about people at low end; histogram
@@ -269,6 +270,22 @@ ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
     geom_bar(stat = "identity", position = position_dodge()) +
     geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
   scale_fill_solarized()
+```
+
+Timecourse plots
+
+```{r}
+timecourse_ss <- d %>% 
+  filter(trial.type == "test") %>% 
+  group_by(condition, subid, t.stim) %>% 
+  summarise(ss_accuracy = mean(correct, na.rm = T)) %>% 
+  group_by(condition, t.stim) %>% 
+  multi_boot_standard(column = "ss_accuracy", na.rm=T)
+```
+
+```{r}
+ggplot(aes(x=t.stim, y = mean, color = condition), data = timecourse_ss) + 
+  geom_point()
 ```
 
 ## Model 
