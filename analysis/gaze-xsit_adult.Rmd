@@ -130,6 +130,9 @@ This is only relevant for the gaze condition. In the no-gaze condition, each tim
 
 ```{r}
 d %<>% mutate(correct = ifelse(target_object == participant_looking_char, TRUE, FALSE),
+              correct_char = ifelse(target_object == participant_looking_char, "correct", 
+                                    ifelse(participant_looking_char == "face", "face",
+                                           "incorrect")),
               gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
 ```
 
@@ -185,7 +188,7 @@ ss_correct_exposure <- d %>%
 
 ggplot(aes(x=mean_accuracy_exp, fill = condition),
        data = ss_correct_exposure) +
-    geom_density(alpha = 0.5) +
+    geom_histogram(alpha = 0.5) +
     facet_wrap(~condition) +
     xlab("Mean Accuracy Scores")
 ```
@@ -209,7 +212,6 @@ ggplot(aes(x=mean_gf_exp),
     ggtitle("Gaze Following on each Trial in Gaze Condition")
 
 ##think about people at low end; histogram
-
 paste("Mean Gaze Following Score is:", round(mean(ss_gf_exposure$mean_gf_exp), 2))
 ```
 
@@ -227,9 +229,39 @@ ss_acc_test <- d %>%
 
 ggplot(aes(x=mean_accuracy),
        data = ss_acc_test) +
-    geom_density() +
+    geom_histogram() +
     xlab("Mean Accuracy") +
     facet_wrap(~condition)
+```
+
+```{r}
+ms_acc_test <- ss_acc_test %>% 
+  group_by(condition) %>% 
+  multi_boot_standard(column = "mean_accuracy")
+
+ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
+  geom_bar(stat = "identity") +
+  geom_linerange(aes(ymin=ci_lower, ymax=ci_upper)) +
+  xlab("Condition") +
+  ylab("Proportion Correct") +
+  ylim(0, 0.75) +
+  geom_hline(yintercept = 0.5, lty = "dashed")
+```
+
+T.test comparing accuracy across conditions
+
+```{r}
+t.test(mean_accuracy ~ condition, data = ss_acc_test)
+```
+
+
+Get RT for each test trial. RT is the latency to disengage from the signer to either the correct or incorrect picture.
+
+```{r}
+d_test_trials <- d %>% 
+  filter(trial.type == "test", subid == "020816_01") %>% 
+  select(participant_looking_char, t.stim, trial_num)
+  
 ```
 
 ## Visualizations
@@ -248,25 +280,37 @@ ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
     geom_smooth(method = "lm", se = T, size = 2) +
   scale_color_solarized() +
   geom_point(alpha = 0.6) 
+
+# plot the relation between acc on exposure and acc on test
+ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
+    geom_smooth(method = "loess", se = T, size = 2) +
+  scale_color_solarized() +
+  geom_point(alpha = 0.6) 
 ```
 
 Bin participants/trials based on exposure looking (same/switch analysis).
 
 ```{r}
-ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 4)
-    
+ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 2)
+
+ss_acc_all %<>%
+  group_by(condition) %>% 
+  summarise(med_split = median(exposure, na.rm=T)) %>% 
+  left_join(ss_acc_all, by = "condition") %>% 
+  mutate(med_split_bin = ifelse(exposure <= med_split, "lower", "upper"))
+  
 ms <- ss_acc_all %>% 
-  group_by(subid, exptarget_bin, condition) %>%
+  group_by(subid, med_split_bin, condition) %>%
   summarise(mean_acc = mean(test, na.rm = T)) %>% 
-  group_by(exptarget_bin, condition) %>% 
+  group_by(med_split_bin, condition) %>% 
   multi_boot_standard(column = "mean_acc", na.rm = T) %>% 
-  filter(is.na(exptarget_bin) == F)
+  filter(is.na(med_split_bin) == F)
 ```
 
 Plot.
 
 ```{r}
-ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
+ggplot(aes(x = med_split_bin, y = mean, fill = condition), data = ms) +
     geom_bar(stat = "identity", position = position_dodge()) +
     geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
   scale_fill_solarized()
@@ -275,18 +319,60 @@ ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
 Timecourse plots
 
 ```{r}
-timecourse_ss <- d %>% 
+# bin timeslices
+subsample.hz <- 1
+
+d_binned <- d %>% 
+  mutate(t.crit.binned = round(t.stim*subsample.hz) / subsample.hz) %>% 
+  filter(participant_looking_char %in% c("left", "right", "face"))
+```
+
+```{r}
+# Get counts of looking to each location at each timeslice
+ss_count <- d_binned %>%
   filter(trial.type == "test") %>% 
-  group_by(condition, subid, t.stim) %>% 
-  summarise(ss_accuracy = mean(correct, na.rm = T)) %>% 
-  group_by(condition, t.stim) %>% 
+  group_by(condition, subid, t.crit.binned, correct_char) %>% 
+  dplyr::summarise(count = ifelse(n() == 0, 0, n()))
+
+# Get total looking for each participant for each timeslice
+ss_count %<>% 
+  group_by(subid, condition, t.crit.binned) %>% 
+  summarise(total_slices = sum(count)) %>% 
+  left_join(ss_count) %>% 
+  mutate(prop_looking = count / total_slices)
+
+ss_timecourse<- ss_count %>% 
+  group_by(condition, subid, t.crit.binned, correct_char) %>% 
+  summarise(ss_accuracy = mean(prop_looking, na.rm = T)) %>% 
+  group_by(condition, t.crit.binned, correct_char) %>% 
   multi_boot_standard(column = "ss_accuracy", na.rm=T)
 ```
 
 ```{r}
-ggplot(aes(x=t.stim, y = mean, color = condition), data = timecourse_ss) + 
-  geom_point()
+ggplot(aes(x=t.crit.binned, y = mean, color = correct_char), data = ss_timecourse) + 
+  geom_pointrange(aes(ymin=ci_lower, ymax=ci_upper)) +
+  geom_line() +
+  geom_hline(yintercept = 0.3, lty = "dashed") +
+  facet_grid(.~condition) 
 ```
+
+Summarize looking to each location.
+
+```{r}
+ss_count %<>% 
+  group_by(condition, subid, correct_char) %>% 
+  summarise(ss_accuracy = mean(prop_looking, na.rm = T))  
+  
+ms_timecourse <- ss_count %>% 
+  group_by(condition, correct_char) %>% 
+  multi_boot_standard(column = "ss_accuracy", na.rm=T)
+
+ggplot(aes(x=correct_char, y=mean, fill = condition), data = ms_timecourse) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_linerange(aes(ymin=ci_lower, ymax=ci_upper), position = position_dodge(width = 0.9)) +
+  scale_fill_solarized()
+```
+
 
 ## Model 
 
@@ -314,7 +400,7 @@ Models:
 2) Predicting looking behavior based on trial type (Same/Switch binned based on looking behavior during exposure trials)
 
 ```{r}
-m1.cont <- lmer(test ~ exposure * condition + (1|subid), data = ss_acc_all)
+m1.cont <- lmer(test ~ exposure * condition + (1|subid), data = filter(ss_acc_all, is.na(exposure) == F))
 kable(summary(m1.cont)$coef)
 ```
 
