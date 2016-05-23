@@ -142,7 +142,6 @@ Remove trials with slow RTs?
 
 Remove trials where ss did not follow gaze on exposure?
 
-
 ### Munging to get performance on exposure trials 
 
 Next we create a data frame with just exposure trials for visualization and analysis.
@@ -235,10 +234,14 @@ ggplot(aes(x=mean_accuracy),
 ```
 
 ```{r}
-ms_acc_test <- ss_acc_test %>% 
-  group_by(condition) %>% 
-  multi_boot_standard(column = "mean_accuracy")
+ss_acc <- ss_acc_test %>% 
+  group_by(condition, subid) %>% 
+  summarise(ss_acc = mean(mean_accuracy))
 
+ms_acc_test <- ss_acc %>% 
+  group_by(condition) %>% 
+  multi_boot_standard(column = "ss_acc") 
+  
 ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
   geom_bar(stat = "identity") +
   geom_linerange(aes(ymin=ci_lower, ymax=ci_upper)) +
@@ -251,9 +254,8 @@ ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
 T.test comparing accuracy across conditions
 
 ```{r}
-t.test(mean_accuracy ~ condition, data = ss_acc_test)
+t.test(ss_acc ~ condition, data = ss_acc)
 ```
-
 
 Get RT for each test trial. RT is the latency to disengage from the signer to either the correct or incorrect picture.
 
@@ -261,7 +263,6 @@ Get RT for each test trial. RT is the latency to disengage from the signer to ei
 d_test_trials <- d %>% 
   filter(trial.type == "test", subid == "020816_01") %>% 
   select(participant_looking_char, t.stim, trial_num)
-  
 ```
 
 ## Visualizations
@@ -283,15 +284,15 @@ ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
 
 # plot the relation between acc on exposure and acc on test
 ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
-    geom_smooth(method = "loess", se = T, size = 2) +
+  geom_smooth(method = "lm", se = F, size = 2) +
   scale_color_solarized() +
-  geom_point(alpha = 0.6) 
+  geom_point(alpha = 0.5) 
 ```
 
 Bin participants/trials based on exposure looking (same/switch analysis).
 
 ```{r}
-ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 2)
+ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 4)
 
 ss_acc_all %<>%
   group_by(condition) %>% 
@@ -320,14 +321,12 @@ Timecourse plots
 
 ```{r}
 # bin timeslices
-subsample.hz <- 1
+subsample.hz <- 5
 
 d_binned <- d %>% 
   mutate(t.crit.binned = round(t.stim*subsample.hz) / subsample.hz) %>% 
   filter(participant_looking_char %in% c("left", "right", "face"))
-```
 
-```{r}
 # Get counts of looking to each location at each timeslice
 ss_count <- d_binned %>%
   filter(trial.type == "test") %>% 
@@ -346,9 +345,7 @@ ss_timecourse<- ss_count %>%
   summarise(ss_accuracy = mean(prop_looking, na.rm = T)) %>% 
   group_by(condition, t.crit.binned, correct_char) %>% 
   multi_boot_standard(column = "ss_accuracy", na.rm=T)
-```
 
-```{r}
 ggplot(aes(x=t.crit.binned, y = mean, color = correct_char), data = ss_timecourse) + 
   geom_pointrange(aes(ymin=ci_lower, ymax=ci_upper)) +
   geom_line() +
