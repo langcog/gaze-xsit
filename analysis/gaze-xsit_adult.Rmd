@@ -219,7 +219,10 @@ Proportion gaze following on exposure trials in the gaze condition is around a m
 
 ### Munging to get performance on test trials
 
-Next we want to get each participant's target looking on test trials. 
+Next we want to get each participant's target looking on test trials.
+
+X-axis: mean accuracy on a given test trial
+Y-axis: individual test trials
 
 ```{r}
 ss_acc_test <- d %>% 
@@ -239,7 +242,7 @@ ms_acc_test <- ss_acc_test %>%
   group_by(condition) %>% 
   multi_boot_standard(column = "mean_accuracy")
 
-ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
+ggplot(aes(x = condition, y = mean, fill = condition), data = ms_acc_test) +
   geom_bar(stat = "identity") +
   geom_linerange(aes(ymin=ci_lower, ymax=ci_upper)) +
   xlab("Condition") +
@@ -249,6 +252,8 @@ ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
 ```
 
 T.test comparing accuracy across conditions
+
+t = 1.1684, but was not expected to be different
 
 ```{r}
 t.test(mean_accuracy ~ condition, data = ss_acc_test)
@@ -279,18 +284,39 @@ ss_acc_all <- d %>%
 ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
     geom_smooth(method = "lm", se = T, size = 2) +
   scale_color_solarized() +
-  geom_point(alpha = 0.6) 
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = 0.5, lty = "dashed")
 
 # plot the relation between acc on exposure and acc on test
 ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
     geom_smooth(method = "loess", se = T, size = 2) +
   scale_color_solarized() +
-  geom_point(alpha = 0.6) 
+  geom_point(alpha = 0.6) + 
+  geom_hline(yintercept = 0.5, lty = "dashed")
 ```
 
 Bin participants/trials based on exposure looking (same/switch analysis).
 
+```{r quartiles}
+ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 4)
+
+ms <- ss_acc_all %>% 
+  group_by(subid, exptarget_bin, condition) %>%
+  summarise(mean_acc = mean(test, na.rm = T)) %>% 
+  group_by(exptarget_bin, condition) %>% 
+  multi_boot_standard(column = "mean_acc", na.rm = T) %>% 
+  filter(is.na(exptarget_bin) == F)
+```
+
+Plot.
 ```{r}
+ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
+  geom_hline(yintercept = 0.5, lty = "dashed")
+```
+
+```{r med_split}
 ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 2)
 
 ss_acc_all %<>%
@@ -313,7 +339,8 @@ Plot.
 ggplot(aes(x = med_split_bin, y = mean, fill = condition), data = ms) +
     geom_bar(stat = "identity", position = position_dodge()) +
     geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
-  scale_fill_solarized()
+  scale_fill_solarized() +
+  geom_hline(yintercept = 0.5, lty = "dashed")
 ```
 
 Timecourse plots
