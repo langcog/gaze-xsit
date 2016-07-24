@@ -10,3 +10,4 @@ my-own-auth.json
 settings.json
 history.csv
 *cache/
+/presentations
