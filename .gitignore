@@ -11,3 +11,5 @@ settings.json
 history.csv
 *cache/
 /presentations
+/old_analysis
+/misc_unused

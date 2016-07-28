@@ -1,4 +1,4 @@
-mo---
+---
 title: "Gaze-Xsit Adult"
 author: "Allison Dods & Kyle MacDonald"
 date: "February 2, 2016"
@@ -36,14 +36,14 @@ Load data and filter out unusable participants.
 d <- read_csv("../data/processed_data/processed_adult_data.csv")
 
 # join subject info
-subinfo <- read_csv("../info/subinfo_adult_n.csv")
+subinfo <- read_csv("../data/subinfo_adult_n.csv")
 
 d %<>% 
   mutate(subid = gsub(".txt", "", subid)) %>%
   left_join(subinfo)
-  
+
 # join trial info
-trialinfo <- read_csv("../info/trialinfo.csv")
+trialinfo <- read_csv("../data/trialinfo_1.csv")
 d %<>% left_join(trialinfo, by = "stimulus")
 
 # filter out unusable participants 
@@ -59,14 +59,15 @@ d_screentime <- transform(d_screentime, percent_bad_looks = bad_looks/total_time
 
 
 ##filter out participants more than 1 standard dev away from mean screentime
-a <- sd(d_screentime$percent_bad_looks)
-b <- mean(d_screentime$percent_bad_looks)
+sd_ss <- sd(d_screentime$percent_bad_looks)
+mean_ss <- mean(d_screentime$percent_bad_looks)
 
-d %<>%
-  left_join(d_screentime)
+d %<>% left_join(d_screentime)
 
-d$keep <- ifelse(d$percent_bad_looks > (a+b), 'n', 'y')
-d %<>% filter(keep == "y")
+d$keep <- ifelse(d$percent_bad_looks > (2*sd_ss + mean_ss), 'n', 'y')
+
+d %<>% filter(keep == "y") %>% 
+  mutate(condition = ifelse(condition == "nogaze", "no-gaze", condition))
 ```
 
 Some table or way of keeping track of how many participants were removed and for what reason. 
@@ -82,18 +83,18 @@ Goal: get a table with the following information
 
 ```{r}
 d %>% 
-    select(subid, condition) %>% 
-    unique() %>% 
-    group_by(condition) %>% 
-    summarise(n_subs = n()) %>% 
-    kable()
+  select(subid, condition) %>% 
+  unique() %>% 
+  group_by(condition) %>% 
+  summarise(n_subs = n()) %>% 
+  kable()
 
 d_descrip <- d %>% 
-    group_by(subid) %>%
-    select(subid, shortname, trial.type) %>% 
-    unique() %>% 
-    group_by(subid) %>% 
-    summarise(n_trials = n()) %>% 
+  group_by(subid) %>%
+  select(subid, shortname, trial.type) %>% 
+  unique() %>% 
+  group_by(subid) %>% 
+  summarise(n_trials = n()) %>% 
   left_join(., unique(select(d, subid, gender, age)))
 
 d_descrip %>% kable()
@@ -106,20 +107,22 @@ Here we label Areas of Interest (participant_looking_char) to be Left Picture, R
 KM question: where did these AOI numbers come from? 
 
 ```{r participant_looking_char setup}
-d %<>% mutate(participant_looking_factor = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
-                           ifelse(x > 1170 & x < 1710 & y < 540, "right", 
-                                  ifelse(x < 1230 & x > 690 & y > 540, "face", "away")))),
-              participant_looking_char = as.character(participant_looking_factor))
+d %<>% 
+  mutate(participant_looking_factor = factor(ifelse(x > 210 & x < 750 & y < 540, "left", 
+                                                    ifelse(x > 1170 & x < 1710 & y < 540, "right", 
+                                                           ifelse(x < 1230 & x > 690 & y > 540, "face", "away")))),
+         participant_looking_char = as.character(participant_looking_factor))
 
 # add trial numbers
 trial_num <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
-d %<>% 
-    select(subid, shortname) %>% 
-    unique() %>% 
-    group_by(subid) %>% 
-    cbind(trial_num) %>% 
-    mutate(trial_num = as.character(trial_num)) %>% 
-    left_join(., d, by = c("subid", "shortname"))
+
+df_trial_nums <- d %>% 
+  select(subid, shortname) %>% 
+  unique() %>% 
+  group_by(subid) %>% 
+  mutate(trial_num = as.character(trial_num))
+
+d %<>% left_join(., df_trial_nums, by = c("subid", "shortname"))
 ```
 
 Add correct column for exposure and test trials. A time slice is correct if the participant looked 
@@ -136,11 +139,6 @@ d %<>% mutate(correct = ifelse(target_object == participant_looking_char, TRUE, 
               gaze_follow = ifelse(look == participant_looking_char, TRUE, FALSE))
 ```
 
-### Trial level filtering
-
-Remove trials with slow RTs? 
-
-Remove trials where ss did not follow gaze on exposure?
 
 ### Munging to get performance on exposure trials 
 
@@ -156,22 +154,22 @@ Note the use of the complete() function from the tidyr package for completing mi
 # create exposure trial data frame
 all.exp <- d %>% 
   filter((trial.type == "exposure" & 
-           participant_looking_char %in% c("left", "right"))) %>%
-    group_by(subid, trial_num, condition, participant_looking_char, trial.type) %>% 
-    summarise(count = n()) %>% 
-    ungroup() %>% 
-    complete(subid, trial_num, participant_looking_char, 
-             fill = list(count = 0)) %>%
-    arrange(subid) %>% 
+            participant_looking_char %in% c("left", "right"))) %>%
+  group_by(subid, trial_num, condition, participant_looking_char, trial.type) %>% 
+  summarise(count = n()) %>% 
+  ungroup() %>% 
+  complete(subid, trial_num, participant_looking_char, 
+           fill = list(count = 0)) %>%
+  arrange(subid) %>% 
   filter(is.na(trial.type) == F) %>% 
-    select(-condition) # here we remove condition since it has NAs after the complete function 
+  select(-condition) # here we remove condition since it has NAs after the complete function 
 
 # add condition and where gaze was directed 
 all.exp <- d %>% 
-    filter(trial.type == "exposure" & participant_looking_char != "face") %>%
-    select(subid, condition, trial_num, look) %>%
-    unique() %>%
-    left_join(all.exp, by = c("subid", "trial_num")) 
+  filter(trial.type == "exposure" & participant_looking_char != "face") %>%
+  select(subid, condition, trial_num, look) %>%
+  unique() %>%
+  left_join(all.exp, by = c("subid", "trial_num")) 
 
 ##double-check exposure trial numbers are consistent across participants
 ##all.exp group by participant subid & summarise n()
@@ -181,15 +179,21 @@ Get proportion correct and incorrect looking on exposure trials (looking at the 
 
 ```{r}
 ss_correct_exposure <- d %>% 
-    filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
-    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
-    summarise(mean_accuracy_exp = mean(correct))
+  filter(trial.type == "exposure" & participant_looking_char %in% c("left", "right")) %>%
+  group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+  summarise(mean_accuracy_exp = mean(correct))
 
-ggplot(aes(x=mean_accuracy_exp, fill = condition),
+a <- ggplot(aes(x=mean_accuracy_exp, color = condition),
        data = ss_correct_exposure) +
-    geom_histogram(alpha = 0.5) +
-    facet_wrap(~condition) +
-    xlab("Mean Accuracy Scores")
+  geom_histogram(binwidth = 0.05, fill = "grey") +
+  facet_wrap(~condition) +
+  guides(color=F) +
+  xlab("Proportion Looking") +
+  ylab("Count") +
+  scale_color_solarized() +
+  ggtitle("A) Distribution of Attention on Exposure trials") + 
+  theme(text = element_text(size=16),
+        plot.title = element_text(size=18))
 ```
 
 The distribution of correct looking is bimodal for the gaze condition and unimodal for the no-gaze condition. This makes sense and provides evidence that people were following gaze, and that they were distributing attention more broadly in the no-gaze condition. 
@@ -198,20 +202,24 @@ Next we want to do a sanity check, that is, we want to make sure people were act
 
 ```{r exposure summary table}
 ss_gf_exposure <- d %>% 
-    filter(trial.type == "exposure", participant_looking_char %in% c("left", "right"), 
-           condition == "gaze") %>%
-    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
-    summarise(mean_gf_exp = mean(gaze_follow))
+  filter(trial.type == "exposure", participant_looking_char %in% c("left", "right"), 
+         condition == "gaze") %>%
+  group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+  summarise(mean_gf_exp = mean(gaze_follow))
 
+b <- ggplot(aes(x=mean_gf_exp),
+            data = ss_gf_exposure) +
+  geom_histogram(fill = "grey", color = "black", binwidth = 0.05) +
+  xlab("Proportion Looking") +
+  ylab("Count") +
+  geom_vline(xintercept = mean(ss_gf_exposure$mean_gf_exp), 
+             color = "orange", linetype = "dashed", size = 1) +
+  ggtitle("B) Gaze Following on Exposure Trials") +
+  theme(text = element_text(size=16),
+        plot.title = element_text(size=18))
 
-ggplot(aes(x=mean_gf_exp),
-       data = ss_gf_exposure) +
-    geom_histogram() +
-    xlab("Mean Gaze Following Score") +
-    ggtitle("Gaze Following on each Trial in Gaze Condition")
-
-##think about people at low end; histogram
-paste("Mean Gaze Following Score is:", round(mean(ss_gf_exposure$mean_gf_exp), 2))
+# put exposure trial plots together
+gridExtra::grid.arrange(a, b, ncol = 2)
 ```
 
 Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze.
@@ -225,15 +233,15 @@ Y-axis: individual test trials
 
 ```{r}
 ss_acc_test <- d %>% 
-    filter(trial.type == "test", participant_looking_char %in% c("left", "right")) %>%
-    group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
-    summarise(mean_accuracy = mean(correct))
+  filter(trial.type == "test", participant_looking_char %in% c("left", "right")) %>%
+  group_by(subid, condition, trial_num = as.numeric(trial_num)) %>% 
+  summarise(mean_accuracy = mean(correct))
 
-ggplot(aes(x=mean_accuracy),
+ggplot(aes(x=mean_accuracy, fill = condition),
        data = ss_acc_test) +
-    geom_histogram() +
-    xlab("Mean Accuracy") +
-    facet_wrap(~condition)
+  geom_density(alpha = 0.5) +
+  xlab("Mean Accuracy") +
+  scale_fill_solarized()
 ```
 
 ```{r}
@@ -241,18 +249,17 @@ ss_acc <- ss_acc_test %>%
   group_by(condition, subid) %>% 
   summarise(ss_acc = mean(mean_accuracy))
 
-
 ms_acc_test <- ss_acc %>% 
   group_by(condition) %>% 
   multi_boot_standard(column = "ss_acc") 
-  
+
 ggplot(aes(x = condition, y = mean), data = ms_acc_test) +
   geom_bar(stat = "identity") +
   geom_linerange(aes(ymin=ci_lower, ymax=ci_upper)) +
   xlab("Condition") +
   ylab("Proportion Correct") +
   ylim(0, 0.75) +
-  geom_hline(yintercept = 0.5, lty = "dashed")
+  geom_hline(yintercept = 0.5, lty = "dashed") 
 ```
 
 T.test comparing accuracy across conditions
@@ -263,7 +270,7 @@ t = 1.1684, but was not expected to be different
 t.test(ss_acc ~ condition, data = ss_acc)
 ```
 
-Get RT for each test trial. RT is the latency to disengage from the signer to either the correct or incorrect picture.
+Get RT for each test trial. RT is the latency to disengage from the center to either the correct or incorrect picture.
 
 ```{r}
 d_test_trials <- d %>% 
@@ -277,28 +284,25 @@ Continuous accuracy scores
 
 ```{r}
 ss_acc_all <- d %>% 
-    filter(trial.type != "familiar", participant_looking_char %in% c("left", "right")) %>%
-    group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
-    summarise(mean_accuracy = mean(correct)) %>% 
-    spread(trial.type, mean_accuracy)
+  filter(trial.type != "familiar", participant_looking_char %in% c("left", "right")) %>%
+  group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
+  summarise(mean_accuracy = mean(correct)) %>% 
+  spread(trial.type, mean_accuracy)
+```
 
+```{r}
 # plot the relation between acc on exposure and acc on test
-ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
-    geom_smooth(method = "lm", se = T, size = 2) +
+ggplot(aes(x = exposure, y = test, color = condition), 
+                       data = ss_acc_all) +
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm", se = T, size = 2) +
   scale_color_solarized() +
-  geom_point(alpha = 0.6) +
-  geom_hline(yintercept = 0.5, lty = "dashed")
-
-# plot the relation between acc on exposure and acc on test
-ggplot(aes(x = exposure, y = test, color = condition), data = ss_acc_all) +
-  geom_smooth(method = "lm", se = F, size = 2) +
-  scale_color_solarized() +
-<<<<<<< HEAD
-  geom_point(alpha = 0.6) + 
-  geom_hline(yintercept = 0.5, lty = "dashed")
-=======
-  geom_point(alpha = 0.5) 
->>>>>>> b7b070d4cc90cdcd91472885af9c8e01930b9997
+  geom_hline(yintercept = 0.5, lty = "dashed") +
+  guides(color = F) +
+  ylab("Proportion Looking Test") +
+  xlab("Proportion Looking Exposure") +
+  theme(text = element_text(size=16),
+        plot.margin = unit(c(1,5,1,1), "lines")) 
 ```
 
 Bin participants/trials based on exposure looking (same/switch analysis).
@@ -316,25 +320,36 @@ ms <- ss_acc_all %>%
 
 Plot.
 ```{r}
-<<<<<<< HEAD
-ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
-    geom_bar(stat = "identity", position = position_dodge()) +
-    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
-  geom_hline(yintercept = 0.5, lty = "dashed")
+ms$exptarget_bin <- recode_factor(ms$exptarget_bin, "(-0.001,0.25]" = "[0, 0.25]", 
+                                  "(0.25,0.5]" = "[0.25, 0.5]", 
+                                  "(0.5,0.75]" = "[0.5, 0.75]", 
+                                  "(0.75,1]" = "[0.75, 1]")  
+
+binned_plot <- ggplot(aes(x = exptarget_bin, y = mean, fill = condition), data = ms) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
+  geom_hline(yintercept = 0.5, lty = "dashed") +
+  scale_fill_solarized() + 
+  xlab("Binned Proportion Looking Exposure") +
+  ylab("Proportion Looking Test") +
+  theme(text = element_text(size=16),
+        plot.title = element_text(size=18),
+        legend.position=c(.15, .85)) 
+```
+
+```{r}
+gridExtra::grid.arrange(scatter_plot, binned_plot, ncol = 2)
 ```
 
 ```{r med_split}
 ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 2)
-=======
-ss_acc_all$exptarget_bin <- cut(ss_acc_all$exposure, breaks = 4)
->>>>>>> b7b070d4cc90cdcd91472885af9c8e01930b9997
 
 ss_acc_all %<>%
   group_by(condition) %>% 
   summarise(med_split = median(exposure, na.rm=T)) %>% 
   left_join(ss_acc_all, by = "condition") %>% 
   mutate(med_split_bin = ifelse(exposure <= med_split, "lower", "upper"))
-  
+
 ms <- ss_acc_all %>% 
   group_by(subid, med_split_bin, condition) %>%
   summarise(mean_acc = mean(test, na.rm = T)) %>% 
@@ -347,13 +362,13 @@ Plot.
 
 ```{r}
 ggplot(aes(x = med_split_bin, y = mean, fill = condition), data = ms) +
-    geom_bar(stat = "identity", position = position_dodge()) +
-    geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(width = 0.9)) +
   scale_fill_solarized() +
   geom_hline(yintercept = 0.5, lty = "dashed")
 ```
 
-Timecourse plots
+Timecourse plots: Test trials
 
 ```{r}
 # bin timeslices
@@ -365,45 +380,47 @@ d_binned <- d %>%
 
 # Get counts of looking to each location at each timeslice
 ss_count <- d_binned %>%
-  filter(trial.type == "test") %>% 
-  group_by(condition, subid, t.crit.binned, correct_char) %>% 
+  filter(trial.type %in% c("test", "exposure")) %>% 
+  group_by(condition, subid, t.crit.binned, correct_char, trial.type) %>% 
   dplyr::summarise(count = ifelse(n() == 0, 0, n()))
 
 # Get total looking for each participant for each timeslice
 ss_count %<>% 
-  group_by(subid, condition, t.crit.binned) %>% 
+  group_by(subid, condition, t.crit.binned, trial.type) %>% 
   summarise(total_slices = sum(count)) %>% 
   left_join(ss_count) %>% 
   mutate(prop_looking = count / total_slices)
 
 ss_timecourse<- ss_count %>% 
-  group_by(condition, subid, t.crit.binned, correct_char) %>% 
+  group_by(condition, subid, t.crit.binned, correct_char, trial.type) %>% 
   summarise(ss_accuracy = mean(prop_looking, na.rm = T)) %>% 
-  group_by(condition, t.crit.binned, correct_char) %>% 
+  group_by(condition, t.crit.binned, correct_char, trial.type) %>% 
   multi_boot_standard(column = "ss_accuracy", na.rm=T)
 
 ggplot(aes(x=t.crit.binned, y = mean, color = correct_char), data = ss_timecourse) + 
   geom_pointrange(aes(ymin=ci_lower, ymax=ci_upper)) +
   geom_line() +
   geom_hline(yintercept = 0.3, lty = "dashed") +
-  facet_grid(.~condition) 
+  facet_grid(trial.type~condition) 
 ```
 
 Summarize looking to each location.
 
 ```{r}
 ss_count %<>% 
-  group_by(condition, subid, correct_char) %>% 
+  group_by(condition, subid, correct_char, trial.type) %>% 
   summarise(ss_accuracy = mean(prop_looking, na.rm = T))  
-  
+
 ms_timecourse <- ss_count %>% 
-  group_by(condition, correct_char) %>% 
+  group_by(condition, correct_char, trial.type) %>% 
   multi_boot_standard(column = "ss_accuracy", na.rm=T)
 
 ggplot(aes(x=correct_char, y=mean, fill = condition), data = ms_timecourse) +
   geom_bar(stat = "identity", position = position_dodge()) +
-  geom_linerange(aes(ymin=ci_lower, ymax=ci_upper), position = position_dodge(width = 0.9)) +
-  scale_fill_solarized()
+  geom_linerange(aes(ymin=ci_lower, ymax=ci_upper), 
+                 position = position_dodge(width = 0.9)) +
+  scale_fill_solarized() +
+  facet_grid(~trial.type)
 ```
 
 
