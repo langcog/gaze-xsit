@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
 ```
 
-
 This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
 
 ```{r setup} 
