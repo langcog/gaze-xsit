@@ -1,0 +1,171 @@
+---
+title: "Gaze-xsit Timecourse Wrangling"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+```{r chunk opts, echo = F}
+rm(list = ls())
+knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+```
+
+This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
+
+* Input: processed data spreadsheet, subject info spreadsheet, trial info
+* Output: d (mastersheet with times, trial, subject, condition, and gazes)
+
+```{r setup} 
+library(magrittr)
+library(stringr)
+library(tidyverse)
+theme_set(theme_bw())
+
+# path information
+read_path <- "../../data/2_processed_data/"
+write_path <- "../../data/3_tidy_data/"
+```
+
+Read data.
+
+```{r read data}
+d <- read_csv(paste0(read_path, "processed_adult_data.csv"))
+trialinfo <- read_csv("../../data/gaze_xsit_trialinfo.csv")
+subinfo <- read_csv("../../data/subinfo_adult.csv")
+```
+
+Add participant information. 
+
+```{r}
+# hacky way to deal with shift in subject naming convention after
+# data collection had begun
+tmp_subinfo <- subinfo %>% 
+  filter(!is.na(old_subid)) %>% 
+  rename(subid_good = subid,
+         subid = old_subid) %>% 
+  select(subid, subid_good)
+
+d %<>% 
+  mutate(subid = ifelse(subid == "0216166_03", "021616_03", subid)) %>% 
+  left_join(tmp_subinfo, by = "subid") %>% 
+  mutate(subid = ifelse(is.na(subid_good), subid, subid_good)) %>% 
+  dplyr::select(-subid_good)
+
+d %<>% left_join(subinfo, by = "subid")
+```
+
+Add trial information.
+
+```{r}
+d %<>% left_join(trialinfo, by = "stimulus")
+```
+
+Filter out unusable participants. We do this by calculating the percentage of non-looks: looking away from the screen entirely. Note that offscreen == TRUE if x is 0 and y is 1050, so higher values of `bad_looks` means more away looking. 
+
+```{r}
+d_screentime <- d %>%
+  mutate(offscreen = case_when(
+     (x == 0 & y == 1050) ~ TRUE, 
+     is.na(x) ~ TRUE, 
+     is.na(y) ~ TRUE,
+     TRUE ~ FALSE)
+  ) %>% 
+  select(subid, t, offscreen) %>%
+  group_by(subid) %>%
+  summarise(bad_looks = sum(offscreen, na.rm = TRUE), 
+            total_timeslices = n())
+
+d_screentime %<>% mutate(percent_bad_looks = bad_looks/total_timeslices)
+```
+
+Filter out participants more than 2 standard dev away from mean screentime. 
+
+```{r}
+sd_ss <- sd(d_screentime$percent_bad_looks)
+mean_ss <- mean(d_screentime$percent_bad_looks)
+
+d %<>% left_join(d_screentime, by = "subid")
+
+d$keep_et <- ifelse(d$percent_bad_looks > (2*sd_ss + mean_ss), 
+                 'exclude', 'include')
+```
+
+Make table of exclusions based on the away filter. 
+
+```{r}
+d %>% 
+  select(subid, keep_et) %>% 
+  distinct() %>% 
+  count(keep_et)
+```
+
+Now we filter
+
+```{r}
+d %<>% filter(keep_et == "include") 
+```
+
+## More data wrangling
+
+Here we label Areas of Interest (ss_looking_char) to be Left Picture, Right Picture, and the Center Face. We also add trial number variable.
+
+```{r}
+d %<>% mutate(condition = ifelse(condition == "nogaze", "no-gaze", 
+                                 condition))
+```
+
+Make "sanity check" plot of looks based on x/y coordinates.
+
+```{r}
+d.rois <- sample_n(d, size = 0.1 * nrow(d)) # get a sample so we don't plot all 200k plus rows
+
+ggplot(aes(x = x, y = y), data = d.rois) +
+  stat_density_2d(aes(fill = ..level..), geom = "polygon") +
+  lims(x = c(0, 1980))
+```
+
+Bin each timeslice as looking to one of the ROIs or "away"
+
+```{r ss_looking_char setup}
+d %<>% 
+  mutate(ss_looking_factor = case_when(
+    x > 210 & x < 750 & y < 540 ~ "left",
+    x > 1170 & x < 1710 & y < 540 ~ "right",
+    x < 1230 & x > 690 & y > 540 ~ "face",
+    TRUE ~ "away"
+    ),
+  ss_looking_char = as.character(ss_looking_factor)
+  )
+```
+
+Add trial numbers.
+
+```{r}
+trial_num <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
+
+df_trial_nums <- d %>% 
+  select(subid, shortname) %>% 
+  filter(!is.na(shortname)) %>% # this removes one NA row from participant (051216_01)
+  unique() %>% 
+  group_by(subid) %>% 
+  mutate(trial_num = as.character(trial_num))
+
+d %<>% left_join(df_trial_nums, by = c("subid", "shortname"))
+```
+
+Add correct column for exposure and test trials. A time slice is correct if the participant looked at the object that was kept from exposure to test.
+
+We also add a column encoding whether the participant looked at the gaze target during exposure trials. This is only relevant for the gaze condition. In the no-gaze condition, each time slice will be False.
+
+```{r}
+d %<>% mutate(correct = ifelse(target_object == ss_looking_char, TRUE, FALSE),
+              correct_char = ifelse(target_object == ss_looking_char, "correct", 
+                                    ifelse(ss_looking_char == "face", "face",
+                                           "incorrect")),
+              gaze_follow = ifelse(look == ss_looking_char, TRUE, FALSE))
+```
+
+## Save tidy timecourse data
+
+```{r}
+write_csv(x = d, path = paste0(write_path, "gaze_xsit_tidy_timecourse.csv"))
+```

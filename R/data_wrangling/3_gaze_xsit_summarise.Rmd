@@ -1,0 +1,83 @@
+---
+title: "Gaze-xsit Summarise"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+```{r chunk opts, echo = F}
+rm(list = ls())
+knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+```
+
+This script creates a summary table of participant looking behavior in the Gaze-Xsit experiment (a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts).
+
+```{r setup} 
+library(magrittr)
+library(stringr)
+library(tidyverse)
+theme_set(theme_bw())
+
+# path information
+read_path <- "../../data/3_tidy_data/"
+write_path <- "../../data/3_tidy_data/"
+```
+
+Read data. 
+
+```{r}
+d <- read_csv(file = paste0(read_path, "gaze_xsit_tidy_timecourse.csv"))
+```
+
+## Get proportion looking on exposure and test trials 
+
+Here we create a summary data frame for analysis and visualizations.
+
+First, we need to get a crosstabs of where participants were looking during each trial. The 
+target_object variable encodes the object that will appear again during test. It does not 
+have to be the target of gaze. 
+
+Note the use of the complete() function from the tidyr package for completing missing combinations of data. It turns implicitly missing values into explicitly missing values.
+
+```{r}
+# get count of looking to each picture
+ss <- d %>% 
+  filter(ss_looking_char %in% c("left", "right", "face")) %>%
+  group_by(subid, trial_num, condition, ss_looking_char, trial.type, look, correct) %>% 
+  summarise(count = n()) 
+
+# complete the cases 
+# this takes care of when there was no looking to one of the images
+ss %<>% 
+  ungroup() %>% 
+  complete(subid, trial_num, ss_looking_char, 
+           fill = list(count = 0)) %>%
+  arrange(subid) %>% 
+  filter(is.na(trial.type) == F) %>% 
+  select(-condition) # here we remove condition since it has NAs after the complete function 
+```
+
+Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
+
+```{r}
+ss <- d %>% 
+  filter(ss_looking_char %in% c("left", "right"),
+         trial_num != "fam") %>%
+  mutate(trial_num = kmetR::to_n(trial_num)) %>% 
+  group_by(subid, condition, trial_num, trial.type) %>% 
+  summarise(m_correct = mean(correct, na.rm = T),
+            m_gaze_follow = mean(gaze_follow, na.rm = T))
+```
+
+## Get RTs for exposure and test trials
+
+TODO (fix score_smi function)
+
+```{r}
+```
+
+## Write to file
+
+```{r}
+write_csv(ss, paste0(write_path, "gaze_xsit_tidy_ss_level.csv"))
+```
+

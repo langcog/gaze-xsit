@@ -1,0 +1,47 @@
+---
+title: "Gaze-xsit Models"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model 
+
+Question: For each condition, does the amount of time looking at the object during exposure trials predict
+the participants' success (higher accuracy) on test trials? 
+
+Define Same and Switch trials are inferred based on participant looking during exposure trials. 
+
+* Same trials are... 
+* Switch trials are...
+
+Predictions: 
+
+* In the gaze condition, participants will allocate more attention to the target of gaze, and thus perform at chance on 
+"Switch" test trials where the target of gaze is not present. 
+* In the no-gaze condition, participants will allocate equal attention to both objects on exposure trials, and thus perform better on 
+"Switch" test trials.
+* A quantiative relation between the amount of looking during exposure and the success at test. [allocation of attention model]
+* When gaze and no-gaze participants allocate the same amount of attention during exposure, gaze participants will still perform 
+worse that no gaze participants on "Switch" Trials. [social is special model]
+
+Models:
+
+  1) Predicting looking behavior (proportion correct or proportion looking to the kept object) based on condition 
+  2) Predicting looking behavior based on trial type (Same/Switch binned based on looking behavior during exposure trials)
+
+```{r}
+m1.cont <- lmer(test ~ exposure * condition + (1|subid), 
+                data = filter(ss_acc_all, is.na(exposure) == F))
+kable(summary(m1.cont)$coef)
+```
+
+Categorical model with exposure looking binned into 4 groups.
+
+```{r}
+m2.cat <- lmer(test ~ exptarget_bin * condition + (1|subid), data = ss_acc_all) 
+kable(summary(m2.cat)$coef)
+```

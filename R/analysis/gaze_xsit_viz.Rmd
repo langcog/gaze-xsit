@@ -1,0 +1,126 @@
+---
+title: "Gaze-Xsit Visualizations"
+author: "Allison Dods & Kyle MacDonald"
+date: "February 2, 2016"
+output: html_document
+---
+
+```{r chunk opts}
+rm(list = ls())
+knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+```
+
+This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
+
+```{r setup} 
+library(magrittr)
+library(knitr)
+library(langcog)
+library(lme4)
+library(directlabels)
+library(tidyverse)
+theme_set(theme_bw())
+```
+
+Read data.
+
+```{r}
+d <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_ss_level.csv")
+d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+```
+
+## Descriptives 
+
+Number of participants in each condition 
+
+```{r}
+d %>% 
+  select(subid, condition) %>% 
+  unique() %>% 
+  group_by(condition) %>% 
+  summarise(n_subs = n()) %>% 
+  kable()
+```
+
+How many trials of each trial type?
+
+```{r}
+d %>% 
+  group_by(subid, condition, trial.type) %>% 
+  summarise(n_trials = n()) %>% 
+  kable()
+```
+
+## Proportion looking plot
+
+Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
+
+```{r}
+d %>% 
+  filter(trial.type != "familiar") %>% 
+  ggplot(aes(x=m_correct, color = condition)) +
+  geom_histogram(binwidth = 0.05, fill = "grey") +
+  guides(color=F) +
+  xlab("Proportion Looking") +
+  ylab("Count") +
+  langcog::scale_color_solarized() +
+  theme(text = element_text(size=12)) +
+  facet_grid(trial.type~condition) 
+```
+
+The distribution of correct looking is bimodal for the gaze condition and unimodal for the no-gaze condition. This makes sense and provides evidence that people were following gaze, and that they were distributing attention more broadly in the no-gaze condition. 
+
+Next we want to do a sanity check, that is, we want to make sure people were actually following gaze in the gaze condition.
+
+## Gaze following plot
+
+```{r exposure summary table}
+gf_mean <- d %>% 
+  filter(trial.type == "exposure", condition == "gaze") %>% 
+  ungroup() %>% 
+  summarise(m = mean(m_gaze_follow)) %>% 
+  pull()
+
+d %>% 
+  filter(trial.type == "exposure", condition == "gaze") %>% 
+  ggplot(aes(x=m_gaze_follow)) +
+  geom_histogram(fill = "grey", color = "black", binwidth = 0.05) +
+  xlab("Proportion Looking") +
+  ylab("Count") +
+  geom_vline(xintercept = gf_mean, 
+             color = "orange", linetype = "dashed", size = 1) +
+  theme(text = element_text(size=12))
+```
+
+Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze.
+
+## Relationship between looking on exposure and test performance
+
+Create continuous accuracy scores and filter trials where there were fewer than 10 timeslices or 300ms of looking on either exposure or test.  
+
+```{r}
+ss_test <- d_time %>% 
+  filter(trial.type != "familiar", 
+         ss_looking_char %in% c("left", "right")) %>%
+  group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
+  summarise(n = n(),
+            mean_accuracy = mean(correct)) %>% 
+  filter(n >= 10) %>% 
+  select(-n) %>% 
+  spread(trial.type, mean_accuracy)
+```
+
+```{r}
+# plot the relation between acc on exposure and acc on test
+ss_test %>% 
+  ggplot(aes(x = exposure, y = test, color = condition)) +
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm", se = T, size = 2) +
+  langcog::scale_color_solarized() +
+  geom_hline(yintercept = 0.5, lty = "dashed") +
+  guides(color = F) +
+  ylab("Proportion Looking Test") +
+  xlab("Proportion Looking Exposure") +
+  theme(text = element_text(size=12),
+        plot.margin = unit(c(1,5,1,1), "lines")) 
+```
