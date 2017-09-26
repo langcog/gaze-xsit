@@ -21,7 +21,9 @@ d <- purrr::map_df(files, .f = read_smi,
   mutate(subid = str_trim(subid))
 
 ## Preprocess all data
-d_processed <- preprocess_smi(d) %>% 
+d_processed <- d %>% 
+  split(.$subid) %>% 
+  purrr::map_df(preprocess_smi) %>% 
   mutate(t.stim = round(t.stim, 3))
 
 ## WRITE DATA OUT TO CSV FOR EASY ACCESS

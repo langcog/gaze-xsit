@@ -1,7 +1,5 @@
 ---
 title: "Gaze-Xsit Visualizations"
-author: "Allison Dods & Kyle MacDonald"
-date: "February 2, 2016"
 output: html_document
 ---
 
@@ -16,7 +14,6 @@ This script munges and analyzes the data for a project exploring the association
 library(magrittr)
 library(knitr)
 library(langcog)
-library(lme4)
 library(directlabels)
 library(tidyverse)
 theme_set(theme_bw())

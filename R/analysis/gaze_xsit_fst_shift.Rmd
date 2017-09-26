@@ -1,0 +1,19 @@
+---
+title: "Gaze-xsit First Shift Analysis"
+output: html_document
+---
+
+## Set up
+
+```{r chunk opts}
+rm(list = ls())
+knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+```
+
+## Read data
+
+```{r}
+d <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+```
+
+## Accuracy and RT of first shift

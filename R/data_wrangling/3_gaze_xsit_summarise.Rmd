@@ -15,6 +15,7 @@ This script creates a summary table of participant looking behavior in the Gaze-
 library(magrittr)
 library(stringr)
 library(tidyverse)
+source("../helper_functions/helper_functions.R")
 theme_set(theme_bw())
 
 # path information
@@ -70,9 +71,24 @@ ss <- d %>%
 
 ## Get RTs for exposure and test trials
 
-TODO (fix score_smi function)
+TODO: get the timing of noun and gaze onset to compute RTs relative to the critical points in the
 
 ```{r}
+
+```
+
+```{r}
+d %<>% mutate(trial_num_full = paste(trial_num, trial.type, sep = "_")) 
+```
+
+TODO fix bug in the map. When we try to map over different subjects, we don't return different scores.
+
+```{r}
+scores <- d %>% 
+  filter(subid %in% c("021216_01", "021216_02"), 
+         trial_num != "fam", trial.type != "familiar") %>% 
+  split(.$subid, .$trial_num_full) %>% 
+  purrr::map(score_smi_gaze_xsit)
 ```
 
 ## Write to file

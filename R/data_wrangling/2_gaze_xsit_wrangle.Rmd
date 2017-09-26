@@ -85,7 +85,7 @@ mean_ss <- mean(d_screentime$percent_bad_looks)
 
 d %<>% left_join(d_screentime, by = "subid")
 
-d$keep_et <- ifelse(d$percent_bad_looks > (2*sd_ss + mean_ss), 
+d$keep_et <- ifelse(d$percent_bad_looks > (2 * sd_ss + mean_ss), 
                  'exclude', 'include')
 ```
 
