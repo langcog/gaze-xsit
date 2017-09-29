@@ -29,6 +29,12 @@ Read data.
 d <- read_csv(file = paste0(read_path, "gaze_xsit_tidy_timecourse.csv"))
 ```
 
+Create trial name that encodes both number and trial type. 
+
+```{r}
+d %<>% mutate(trial_num_full = paste(trial_num, trial.type, sep = "_")) 
+```
+
 ## Get proportion looking on exposure and test trials 
 
 Here we create a summary data frame for analysis and visualizations.
@@ -57,19 +63,18 @@ ss %<>%
   select(-condition) # here we remove condition since it has NAs after the complete function 
 ```
 
-Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
+Get proportion correct and incorrect looking on exposure and test trials. 
 
 ```{r}
 ss <- d %>% 
-  filter(ss_looking_char %in% c("left", "right"),
-         trial_num != "fam") %>%
-  mutate(trial_num = kmetR::to_n(trial_num)) %>% 
-  group_by(subid, condition, trial_num, trial.type) %>% 
+  filter(ss_looking_char %in% c("left", "right", "face"),
+         trial_num != "fam", trial.type != "familiar") %>%
+  group_by(subid, condition, trial_num_full) %>% 
   summarise(m_correct = mean(correct, na.rm = T),
             m_gaze_follow = mean(gaze_follow, na.rm = T))
 ```
 
-## Get RTs for exposure and test trials
+## Get RTs for first shifts on exposure and test trials
 
 TODO: get the timing of noun and gaze onset to compute RTs relative to the critical points in the
 
@@ -77,18 +82,20 @@ TODO: get the timing of noun and gaze onset to compute RTs relative to the criti
 
 ```
 
+Map the score function over each participants' data frame. This returns an RT and a shift-type for all first shifts after noun onset. (Note that this will take a couple of minutes to run.) 
+
 ```{r}
-d %<>% mutate(trial_num_full = paste(trial_num, trial.type, sep = "_")) 
+trial_scores <- d %>% 
+  filter(ss_looking_char %in% c("left", "right", "face"),
+    trial_num != "fam", trial.type != "familiar") %>% 
+  split(.$subid) %>% 
+  purrr::map_df(score_smi_participant)
 ```
 
-TODO fix bug in the map. When we try to map over different subjects, we don't return different scores.
+Join with the rest of the Trial-level data. 
 
 ```{r}
-scores <- d %>% 
-  filter(subid %in% c("021216_01", "021216_02"), 
-         trial_num != "fam", trial.type != "familiar") %>% 
-  split(.$subid, .$trial_num_full) %>% 
-  purrr::map(score_smi_gaze_xsit)
+ss %<>% left_join(trial_scores, by = c("subid", "trial_num_full"))
 ```
 
 ## Write to file
