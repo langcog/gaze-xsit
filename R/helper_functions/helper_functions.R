@@ -1,3 +1,12 @@
+### Load libraries
+
+library(magrittr)
+library(knitr)
+library(langcog)
+library(directlabels)
+library(tidyverse)
+theme_set(theme_bw())
+
 ## score participant
 score_smi_participant <- function(subject_df) {
   subject_df %>%  

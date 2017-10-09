@@ -12,11 +12,7 @@ knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
 This script creates a summary table of participant looking behavior in the Gaze-Xsit experiment (a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts).
 
 ```{r setup} 
-library(magrittr)
-library(stringr)
-library(tidyverse)
 source("../helper_functions/helper_functions.R")
-theme_set(theme_bw())
 
 # path information
 read_path <- "../../data/3_tidy_data/"
@@ -74,13 +70,21 @@ ss <- d %>%
             m_gaze_follow = mean(gaze_follow, na.rm = T))
 ```
 
-## Get RTs for first shifts on exposure and test trials
-
-TODO: get the timing of noun and gaze onset to compute RTs relative to the critical points in the
+Get proprotion looking to face vs. objects for all trials. 
 
 ```{r}
 
 ```
+
+Get the frequency of gaze shifts within a trial.
+
+```{r}
+
+```
+
+## Get RTs for first shifts on exposure and test trials
+
+Note: the noun and the gaze both started at the beginning of each trial, which makes the first shift accuracy and RT a difficult behavior to anlayze. Instead, we can analyze the frequency of shifting or the proportion of time spent looking at the face vs. objects as an index of the effect of social cues on gaze patterns.
 
 Map the score function over each participants' data frame. This returns an RT and a shift-type for all first shifts after noun onset. (Note that this will take a couple of minutes to run.) 
 

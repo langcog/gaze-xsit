@@ -6,18 +6,10 @@ output: html_document
 ```{r chunk opts}
 rm(list = ls())
 knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+source("../helper_functions/helper_functions.R")
 ```
 
 This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
-
-```{r setup} 
-library(magrittr)
-library(knitr)
-library(langcog)
-library(directlabels)
-library(tidyverse)
-theme_set(theme_bw())
-```
 
 Read data.
 
@@ -43,7 +35,7 @@ How many trials of each trial type?
 
 ```{r}
 d %>% 
-  group_by(subid, condition, trial.type) %>% 
+  group_by(subid, condition, trial_type) %>% 
   summarise(n_trials = n()) %>% 
   kable()
 ```
