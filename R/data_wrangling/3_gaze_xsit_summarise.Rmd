@@ -70,7 +70,7 @@ ss <- d %>%
             m_gaze_follow = mean(gaze_follow, na.rm = T))
 ```
 
-Get proprotion looking to face vs. objects for all trials. 
+Get proportion looking to face vs. objects for all trials. 
 
 ```{r}
 
