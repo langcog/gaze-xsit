@@ -69,3 +69,29 @@ score_smi_trial <- function(trial_df) {
     select(subid, trial_num_full, rt, shift_start, shift_end, shift_correct, shift_type) %>% 
     unique()
 }
+
+
+## computes the number of gaze shifts between AOIs within each trial
+## takes a vector of looking values
+## returns a numeric with the number of shifts
+
+get_freq_gaze_shifts <- function(trial_vect) {
+  # rle counts the number of runs of values in a vector 
+  # note that -1 excludes the last run because there is no shift in the last run
+  rle(x = trial_vect)$values %>% length - 1
+}
+
+
+
+## get any shift type and RT
+## using rle() function, which encodes run length and values
+## todo: fix RT part of function to actually index the t.stim vector
+score_fst_shift <- function(trial_vect, shift_num = 1, interval = 0.033) {
+  run_info <- rle(x = trial_vect)
+  shift_start <- run_info$values[shift_num]
+  shift_end <- run_info$values[shift_num + 1]
+  # wrap in data frame
+  data.frame(shift_type = paste(shift_start, shift_end, sep = "_"),
+             rt = run_info$lengths[shift_num] * interval
+  )
+}

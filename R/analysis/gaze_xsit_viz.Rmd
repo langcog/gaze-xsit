@@ -14,9 +14,14 @@ This script munges and analyzes the data for a project exploring the association
 Read data.
 
 ```{r}
-d <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_ss_level.csv")
-d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+d <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_trial_level.csv")
+#d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 ```
+
+```{r}
+d %<>% separate(col = trial_num_full, c("trial_num", "trial_type"), remove = F)
+```
+
 
 ## Descriptives 
 
@@ -35,8 +40,10 @@ How many trials of each trial type?
 
 ```{r}
 d %>% 
+  select(subid, condition, trial_type, trial_num) %>% 
+  unique() %>% 
   group_by(subid, condition, trial_type) %>% 
-  summarise(n_trials = n()) %>% 
+  count() %>% 
   kable()
 ```
 
@@ -65,13 +72,13 @@ Next we want to do a sanity check, that is, we want to make sure people were act
 
 ```{r exposure summary table}
 gf_mean <- d %>% 
-  filter(trial.type == "exposure", condition == "gaze") %>% 
+  filter(trial_type == "exposure", condition == "gaze") %>% 
   ungroup() %>% 
   summarise(m = mean(m_gaze_follow)) %>% 
   pull()
 
 d %>% 
-  filter(trial.type == "exposure", condition == "gaze") %>% 
+  filter(trial_type == "exposure", condition == "gaze") %>% 
   ggplot(aes(x=m_gaze_follow)) +
   geom_histogram(fill = "grey", color = "black", binwidth = 0.05) +
   xlab("Proportion Looking") +

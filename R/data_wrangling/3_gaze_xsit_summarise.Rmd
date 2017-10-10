@@ -31,56 +31,75 @@ Create trial name that encodes both number and trial type.
 d %<>% mutate(trial_num_full = paste(trial_num, trial.type, sep = "_")) 
 ```
 
-## Get proportion looking on exposure and test trials 
+## Get proportion looking scores
 
 Here we create a summary data frame for analysis and visualizations.
 
-First, we need to get a crosstabs of where participants were looking during each trial. The 
-target_object variable encodes the object that will appear again during test. It does not 
-have to be the target of gaze. 
+First, we need to get a crosstabs of counts for where participants were looking (face, target, distracter) during each trial. The target_object variable encodes the object that will appear again during test. It does not have to be the target of gaze. 
 
 Note the use of the complete() function from the tidyr package for completing missing combinations of data. It turns implicitly missing values into explicitly missing values.
 
 ```{r}
 # get count of looking to each picture
 ss <- d %>% 
-  filter(ss_looking_char %in% c("left", "right", "face")) %>%
-  group_by(subid, trial_num, condition, ss_looking_char, trial.type, look, correct) %>% 
-  summarise(count = n()) 
+  filter(ss_looking_char %in% c("left", "right", "face"),
+         trial_num != "fam", trial.type != "familiar") %>%
+  group_by(subid, trial_num_full, condition, ss_looking_char, look, correct) %>% 
+  summarise(count_looks = n()) 
 
 # complete the cases 
 # this takes care of when there was no looking to one of the images
 ss %<>% 
   ungroup() %>% 
-  complete(subid, trial_num, ss_looking_char, 
-           fill = list(count = 0)) %>%
+  complete(subid, trial_num_full, ss_looking_char, 
+           fill = list(count_looks = 0)) %>%
   arrange(subid) %>% 
-  filter(is.na(trial.type) == F) %>% 
-  select(-condition) # here we remove condition since it has NAs after the complete function 
+  select(-condition) # here we remove condition since it has NAs after the complete function
+
+# get the total number of time slices for each trial and
+ss %<>% 
+  group_by(subid, trial_num_full) %>% 
+  mutate(total_looks = sum(count_looks)) %>% 
+  filter(total_looks > 0) # remove trials without any looking data
+
+# get proportion looking to face and objects during each trial
+ss %<>% mutate(prop_looking = round(count_looks / total_looks, 2))
 ```
 
 Get proportion correct and incorrect looking on exposure and test trials. 
 
 ```{r}
-ss <- d %>% 
+ss_correct <- d %>% 
   filter(ss_looking_char %in% c("left", "right", "face"),
          trial_num != "fam", trial.type != "familiar") %>%
   group_by(subid, condition, trial_num_full) %>% 
-  summarise(m_correct = mean(correct, na.rm = T),
-            m_gaze_follow = mean(gaze_follow, na.rm = T))
+  summarise(m_correct = mean(correct, na.rm = T) %>% round(digits = 2),
+            m_gaze_follow = mean(gaze_follow, na.rm = T) %>% round(digits = 2))
 ```
 
-Get proportion looking to face vs. objects for all trials. 
+Join the prop correct and gaze following with the prop looking data.
 
 ```{r}
-
+ss %<>% left_join(., ss_correct, by = c("subid", "trial_num_full"))
 ```
 
 Get the frequency of gaze shifts within a trial.
 
 ```{r}
-
+num_shifts_df <- d %>% 
+  filter(ss_looking_char %in% c("left", "right", "face"),
+         trial_num != "fam", trial.type != "familiar", 
+         t.stim <= 4) %>% 
+  group_by(subid, trial_num_full) %>% 
+  summarise(num_shifts = get_freq_gaze_shifts(ss_looking_char))
 ```
+
+Join shifting information with the rest of the data.  
+
+```{r}
+ss %<>% left_join(., num_shifts_df, by = c("subid", "trial_num_full"))
+```
+
 
 ## Get RTs for first shifts on exposure and test trials
 
@@ -91,7 +110,7 @@ Map the score function over each participants' data frame. This returns an RT an
 ```{r}
 trial_scores <- d %>% 
   filter(ss_looking_char %in% c("left", "right", "face"),
-    trial_num != "fam", trial.type != "familiar") %>% 
+         trial_num != "fam", trial.type != "familiar") %>% 
   split(.$subid) %>% 
   purrr::map_df(score_smi_participant)
 ```
@@ -105,6 +124,6 @@ ss %<>% left_join(trial_scores, by = c("subid", "trial_num_full"))
 ## Write to file
 
 ```{r}
-write_csv(ss, paste0(write_path, "gaze_xsit_tidy_ss_level.csv"))
+write_csv(ss, paste0(write_path, "gaze_xsit_tidy_trial_level.csv"))
 ```
 
