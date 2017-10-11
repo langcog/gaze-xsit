@@ -6,7 +6,7 @@ output: html_document
 
 ```{r chunk opts, echo = F}
 rm(list = ls())
-knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
 ```
 
 This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
