@@ -18,7 +18,7 @@ This script munges and analyzes the data for a project exploring the association
 library(magrittr)
 library(stringr)
 library(tidyverse)
-theme_set(theme_bw())
+theme_set(ggthemes::theme_few())
 
 # path information
 read_path <- "../../data/2_processed_data/"
@@ -74,7 +74,7 @@ d_screentime <- d %>%
   summarise(bad_looks = sum(offscreen, na.rm = TRUE), 
             total_timeslices = n())
 
-d_screentime %<>% mutate(percent_bad_looks = bad_looks/total_timeslices)
+d_screentime %<>% mutate(percent_bad_looks = bad_looks / total_timeslices)
 ```
 
 Filter out participants more than 2 standard dev away from mean screentime. 
@@ -123,31 +123,35 @@ ggplot(aes(x = x, y = y), data = d.rois) +
   lims(x = c(0, 1980))
 ```
 
+
 Bin each timeslice as looking to one of the ROIs or "away"
 
 ```{r ss_looking_char setup}
 d %<>% 
   mutate(ss_looking_factor = case_when(
-    x > 210 & x < 750 & y < 540 ~ "left",
-    x > 1170 & x < 1710 & y < 540 ~ "right",
-    x < 1230 & x > 690 & y > 540 ~ "face",
+    x >= 210 & x <= 750 & y <= 540 ~ "left",
+    x >= 1170 & x <= 1710 & y <= 540 ~ "right",
+    x <= 1230 & x >= 690 & y >= 540 ~ "face",
+    x == 0 & y == 1050 ~ "missing",
     TRUE ~ "away"
     ),
   ss_looking_char = as.character(ss_looking_factor)
   )
 ```
 
-Add trial numbers.
+Add trial numbers. TODO: fix this so the trial numbers are added correclty
 
 ```{r}
-trial_num <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
+trial_num_vect <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
 
 df_trial_nums <- d %>% 
-  select(subid, shortname) %>% 
+  select(subid, shortname, t) %>% 
   filter(!is.na(shortname)) %>% # this removes one NA row from participant (051216_01)
+  arrange(subid, t) %>% 
+  select(-t) %>% 
   unique() %>% 
-  group_by(subid) %>% 
-  mutate(trial_num = as.character(trial_num))
+  group_by(subid) %>% # this allows you to add the trial vector for each participant
+  mutate(trial_num = trial_num_vect)
 
 d %<>% left_join(df_trial_nums, by = c("subid", "shortname"))
 ```
@@ -162,6 +166,44 @@ d %<>% mutate(correct = ifelse(target_object == ss_looking_char, TRUE, FALSE),
                                     ifelse(ss_looking_char == "face", "face",
                                            "incorrect")),
               gaze_follow = ifelse(look == ss_looking_char, TRUE, FALSE))
+```
+
+## Diagnotstic plots
+
+Next, let's make another sanity check plot of raw looking behavior over time
+
+```{r}
+d_plot <- d %>%
+  filter(trial.type != "familiar", ss_looking_char != 'away' | ss_looking_char != "missing") %>% 
+  mutate(x = ifelse(x < 1 | x > 1919, NA, x), 
+         y = ifelse(y < 1 | y > 1079, NA, y))
+  
+
+ggplot(filter(d_plot, subid == subid[3]), 
+       aes(x = t.stim, y = x)) + 
+  geom_line() + 
+  geom_point(alpha = .3) + 
+  facet_wrap(~trial_num*trial.type) + 
+  ylim(c(0,1920)) + 
+  geom_hline(yintercept = 1920/2, lty = 2)
+
+ggplot(filter(d_plot, subid == subid[2]), 
+       aes(x = x, y = y, col = t.stim)) + 
+  geom_line() + 
+  geom_point(alpha = .3) + 
+  facet_wrap(~trial_num*trial.type) + 
+  xlim(c(0,1920)) + 
+  ylim(c(0,1080)) 
+```
+
+## Interpolation
+
+In this section of code, we "fill in" values that are missing because of tracker loss, but that we are reasonably confident where the participant is looking. 
+
+We define the interpolation algorithm as...
+
+```{r}
+
 ```
 
 ## Save tidy timecourse data

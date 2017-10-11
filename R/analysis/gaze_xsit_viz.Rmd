@@ -5,7 +5,7 @@ output: html_document
 
 ```{r chunk opts}
 rm(list = ls())
-knitr::opts_chunk$set(echo=T, warning=F, cache=T, message=F, sanitize = T)
+knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
 source("../helper_functions/helper_functions.R")
 ```
 
@@ -15,13 +15,8 @@ Read data.
 
 ```{r}
 d <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_trial_level.csv")
-#d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 ```
-
-```{r}
-d %<>% separate(col = trial_num_full, c("trial_num", "trial_type"), remove = F)
-```
-
 
 ## Descriptives 
 
@@ -36,32 +31,21 @@ d %>%
   kable()
 ```
 
-How many trials of each trial type?
-
-```{r}
-d %>% 
-  select(subid, condition, trial_type, trial_num) %>% 
-  unique() %>% 
-  group_by(subid, condition, trial_type) %>% 
-  count() %>% 
-  kable()
-```
-
 ## Proportion looking plot
 
-Get proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
+Plot proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
 
 ```{r}
 d %>% 
-  filter(trial.type != "familiar") %>% 
-  ggplot(aes(x=m_correct, color = condition)) +
+  distinct(subid, trial_num, trial_type, .keep_all = T) %>% 
+  ggplot(aes(x = m_correct, color = condition)) +
   geom_histogram(binwidth = 0.05, fill = "grey") +
   guides(color=F) +
   xlab("Proportion Looking") +
   ylab("Count") +
-  langcog::scale_color_solarized() +
   theme(text = element_text(size=12)) +
-  facet_grid(trial.type~condition) 
+  facet_grid(trial_type ~ condition) +
+  langcog::scale_color_solarized() 
 ```
 
 The distribution of correct looking is bimodal for the gaze condition and unimodal for the no-gaze condition. This makes sense and provides evidence that people were following gaze, and that they were distributing attention more broadly in the no-gaze condition. 
@@ -74,7 +58,7 @@ Next we want to do a sanity check, that is, we want to make sure people were act
 gf_mean <- d %>% 
   filter(trial_type == "exposure", condition == "gaze") %>% 
   ungroup() %>% 
-  summarise(m = mean(m_gaze_follow)) %>% 
+  summarise(m = mean(m_gaze_follow, na.rm = T)) %>% 
   pull()
 
 d %>% 
@@ -88,7 +72,7 @@ d %>%
   theme(text = element_text(size=12))
 ```
 
-Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed heavily towards 1, meaning people followed gaze.
+Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed towards 1, meaning people followed gaze.
 
 ## Relationship between looking on exposure and test performance
 
@@ -101,7 +85,6 @@ ss_test <- d_time %>%
   group_by(subid, condition, trial_num = as.numeric(trial_num), trial.type) %>% 
   summarise(n = n(),
             mean_accuracy = mean(correct)) %>% 
-  filter(n >= 10) %>% 
   select(-n) %>% 
   spread(trial.type, mean_accuracy)
 ```
@@ -114,9 +97,84 @@ ss_test %>%
   geom_smooth(method = "lm", se = T, size = 2) +
   langcog::scale_color_solarized() +
   geom_hline(yintercept = 0.5, lty = "dashed") +
-  guides(color = F) +
-  ylab("Proportion Looking Test") +
-  xlab("Proportion Looking Exposure") +
-  theme(text = element_text(size=12),
-        plot.margin = unit(c(1,5,1,1), "lines")) 
+  labs(y = c("Proportion Looking Test"), 
+       x = c("Proportion Looking Exposure"))
+```
+
+## Frequency of gaze shifts
+
+```{r}
+qplot(d$num_shifts)
+```
+
+```{r}
+d %>% 
+  select(subid, trial_num, trial_type, condition, num_shifts) %>% 
+  unique() %>% 
+  ggplot(aes(x = condition, y = num_shifts, fill = condition)) +
+  geom_boxplot(width = 0.3) +
+  guides(fill=F) +
+  facet_wrap(~trial_type)
+```
+
+## Proportion looking to face 
+
+Make a freq polygon to compare attention allocated to face in 
+
+```{r}
+d %>% 
+  filter(ss_looking_char == "face") %>% 
+  ggplot(aes(x = prop_looking, ..density.., color = condition)) +
+   geom_freqpoly(binwidth = .05, size = 1) + 
+  facet_wrap(~trial_type)
+```
+
+## First shift behavior
+
+```{r}
+d_fst_shift <- d %>% filter(shift_start == "face")
+```
+
+Plot distribution of first shift RTs.
+
+```{r}
+qplot(d_fst_shift$rt)
+```
+
+Time to disengage from the face across conditions (if you happened to be there at the start of the trial out on the face)
+
+```{r}
+d_fst_shift %>% 
+  filter(rt <= 1.5) %>% 
+  group_by(subid, trial_type, condition) %>% 
+  summarise(m = median(rt)) %>%
+  ggplot(aes(x = condition, y = m)) +
+  geom_boxplot(width = 0.2, fill = "darkorange") +
+  facet_wrap(~trial_type)
+```
+
+It looks like an interaction between trial type and condition. On exposure trials, participants are slower to disengage in the gaze condition, but on test trials, participants are faster to disengage.
+
+Speed accuracy tradeoff?
+
+```{r}
+d_fst_shift %>% 
+  filter(rt <= 1.5) %>%
+  group_by(subid, trial_type, condition, shift_correct) %>% 
+  summarise(m = median(rt)) %>%
+  ggplot(aes(x = condition, y = m, fill = shift_correct)) +
+  geom_boxplot(width = 0.2) +
+  facet_wrap(~trial_type)
+```
+
+First shift accuracy on test trials
+
+```{r}
+d_fst_shift %>% 
+  filter(rt <= 1, trial_type == "test") %>% 
+  group_by(subid, trial_type, condition) %>% 
+  summarise(m = mean(shift_correct)) %>% 
+  ggplot(aes(x = condition, y = m)) +
+  geom_boxplot(width = 0.2, fill = "darkorange") +
+  facet_wrap(~trial_type)
 ```

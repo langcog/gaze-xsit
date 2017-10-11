@@ -1,0 +1,43 @@
+---
+title: "Gaze-xsit Looking Animation"
+author: "Kyle MacDonald"
+output: html_document
+---
+
+```{r chunk opts}
+rm(list = ls())
+knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
+source("../helper_functions/helper_functions.R")
+```
+
+This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
+
+Read data.
+
+```{r}
+d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+```
+
+
+```{r}
+d_plot <- d_time %>%
+  filter(t.stim > 0, t.stim <= 4,
+         trial_num != "fam", trial.type != "familiar",
+         ss_looking_char != "away")
+```
+
+## Make the animation of looking behavior unfolding over time
+
+```{r}
+library(gganimate)
+p <- d_plot %>% 
+  filter(subid == subid[3], trial_num == "1", trial.type == "exposure",
+         t.stim <= 0.5) %>% 
+  ggplot(aes(x = x, y = y, color = ss_looking_char, frame = t.stim, interval = .001)) +
+  #geom_line(group = 1, color = "darkgrey") +
+  geom_point(size = 5) +
+  xlim(0,1980)
+
+gganimate(p, "output.gif")
+```
+

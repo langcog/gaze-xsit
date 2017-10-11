@@ -13,8 +13,6 @@ This script creates a summary table of participant looking behavior in the Gaze-
 
 ```{r setup} 
 source("../helper_functions/helper_functions.R")
-
-# path information
 read_path <- "../../data/3_tidy_data/"
 write_path <- "../../data/3_tidy_data/"
 ```
@@ -29,6 +27,44 @@ Create trial name that encodes both number and trial type.
 
 ```{r}
 d %<>% mutate(trial_num_full = paste(trial_num, trial.type, sep = "_")) 
+```
+
+Remove familiar trials
+
+```{r}
+d %<>% filter(trial_num != "fam", trial.type != "familiar")
+```
+
+## Initial data checks
+
+Get the number of participants in each condition.
+
+```{r}
+d %>% 
+  select(subid, condition) %>% 
+  unique() %>% 
+  group_by(condition) %>% 
+  summarise(n_subs = n())
+```
+
+Get the total number of trials
+
+```{r}
+d %>% 
+  filter(trial.type != "familiar") %>% 
+  select(subid, condition, trial.type, trial_num) %>% 
+  unique() %>% 
+  group_by(subid, condition, trial.type) %>% 
+  count() %>% 
+  pull(n) == 16
+```
+
+Extract subid, condition, and trial_number. This is useful for maintaing the integrity of this information during the data joins later in the script. 
+
+```{r}
+ss_info <- d %>% 
+  select(subid, condition) %>%
+  unique()
 ```
 
 ## Get proportion looking scores
@@ -66,13 +102,13 @@ ss %<>%
 ss %<>% mutate(prop_looking = round(count_looks / total_looks, 2))
 ```
 
-Get proportion correct and incorrect looking on exposure and test trials. 
+Get proportion correct and incorrect looking on exposure and test trials. Note that we only use looks to the objects here to score the proportion correct and gaze following. That is, we don't penalize participants for looks to the face AOI. Put another way, these are measures of how participants choose to distribute attention when they disengage from the face. 
 
 ```{r}
 ss_correct <- d %>% 
-  filter(ss_looking_char %in% c("left", "right", "face"),
+  filter(ss_looking_char %in% c("left", "right"),
          trial_num != "fam", trial.type != "familiar") %>%
-  group_by(subid, condition, trial_num_full) %>% 
+  group_by(subid, trial_num_full) %>% 
   summarise(m_correct = mean(correct, na.rm = T) %>% round(digits = 2),
             m_gaze_follow = mean(gaze_follow, na.rm = T) %>% round(digits = 2))
 ```
@@ -94,16 +130,19 @@ num_shifts_df <- d %>%
   summarise(num_shifts = get_freq_gaze_shifts(ss_looking_char))
 ```
 
+Make historgram of number of shifts within each trial.
+
+```{r}
+qplot(num_shifts_df$num_shifts, bins = 10)
+```
+
 Join shifting information with the rest of the data.  
 
 ```{r}
 ss %<>% left_join(., num_shifts_df, by = c("subid", "trial_num_full"))
 ```
 
-
 ## Get RTs for first shifts on exposure and test trials
-
-Note: the noun and the gaze both started at the beginning of each trial, which makes the first shift accuracy and RT a difficult behavior to anlayze. Instead, we can analyze the frequency of shifting or the proportion of time spent looking at the face vs. objects as an index of the effect of social cues on gaze patterns.
 
 Map the score function over each participants' data frame. This returns an RT and a shift-type for all first shifts after noun onset. (Note that this will take a couple of minutes to run.) 
 
@@ -115,11 +154,52 @@ trial_scores <- d %>%
   purrr::map_df(score_smi_participant)
 ```
 
+Note that the noun and the gaze both started at the beginning of each trial, which makes the first shift accuracy and RT a difficult behavior to anlayze. Instead, we can analyze the frequency of shifting or the proportion of time spent looking at the face vs. objects as an index of the effect of social cues on gaze patterns.
+
 Join with the rest of the Trial-level data. 
 
 ```{r}
 ss %<>% left_join(trial_scores, by = c("subid", "trial_num_full"))
 ```
+
+Some final variable clean-up -- separate information for trial number and trial type, so we are not encoding two types of information in a single variable. 
+
+```{r}
+ss %<>% separate(col = trial_num_full, c("trial_num", "trial_type"), remove = F)
+```
+
+Join condtion information 
+
+```{r}
+ss %<>% left_join(., ss_info, by = "subid")
+```
+
+## Final data checks
+
+Number of participipants in each conditions should be 15.
+
+```{r}
+ss %>% 
+  ungroup() %>% 
+  select(subid, condition) %>% 
+  unique() %>% 
+  group_by(condition) %>% 
+  summarise(n_subs = n())
+```
+
+Total number of trials for each participant should be 16. 
+
+```{r}
+d %>% 
+  filter(trial.type != "familiar") %>% 
+  select(subid, condition, trial.type, trial_num) %>% 
+  unique() %>% 
+  group_by(subid, condition, trial.type) %>% 
+  count() %>% 
+  pull(n) == 16
+```
+
+Checks looks good! 
 
 ## Write to file
 
