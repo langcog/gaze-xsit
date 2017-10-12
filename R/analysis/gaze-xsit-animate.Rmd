@@ -10,8 +10,6 @@ knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
 source("../helper_functions/helper_functions.R")
 ```
 
-This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
-
 Read data.
 
 ```{r}
@@ -28,16 +26,35 @@ d_plot <- d_time %>%
 
 ## Make the animation of looking behavior unfolding over time
 
+TODO: get the stimuli images on the plot. 
+
 ```{r}
 library(gganimate)
-p <- d_plot %>% 
-  filter(subid == subid[3], trial_num == "1", trial.type == "exposure",
-         t.stim <= 0.5) %>% 
-  ggplot(aes(x = x, y = y, color = ss_looking_char, frame = t.stim, interval = .001)) +
-  #geom_line(group = 1, color = "darkgrey") +
-  geom_point(size = 5) +
-  xlim(0,1980)
-
-gganimate(p, "output.gif")
+library(png)
+library(grid)
 ```
 
+```{r}
+img <- readPNG("stim.png")
+g <- rasterGrob(img, interpolate=TRUE, width = unit(1,"npc"), 
+                               height = unit(1,"npc"))
+```
+
+```{r}
+p <- d_plot %>% 
+  filter(subid == subid[3], trial_num == "1", trial.type == "exposure",
+         t.stim <= 1) %>% 
+  ggplot(aes(x = x, y = y, frame = t.stim)) +
+  #annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  geom_path(aes(cumulative = TRUE), color = "darkgrey") +
+  geom_point(aes(cumulative = TRUE), shape = 21, size = 5, color = "black",
+             fill = "darkorange", size = 5, stroke = 1, alpha = 0.4) +
+  guides(color = F) + 
+  xlim(0,1980) +
+  ylim(0, 1020)
+p
+```
+
+```{r}
+gganimate(p, interval = .2)
+```
