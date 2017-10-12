@@ -78,8 +78,7 @@ Note the use of the complete() function from the tidyr package for completing mi
 ```{r}
 # get count of looking to each picture
 ss <- d %>% 
-  filter(ss_looking_char %in% c("left", "right", "face"),
-         trial_num != "fam", trial.type != "familiar") %>%
+  filter(ss_looking_char %in% c("left", "right", "face")) %>%
   group_by(subid, trial_num_full, condition, ss_looking_char, look, correct) %>% 
   summarise(count_looks = n()) 
 
@@ -106,8 +105,7 @@ Get proportion correct and incorrect looking on exposure and test trials. Note t
 
 ```{r}
 ss_correct <- d %>% 
-  filter(ss_looking_char %in% c("left", "right"),
-         trial_num != "fam", trial.type != "familiar") %>%
+  filter(ss_looking_char %in% c("left", "right")) %>%
   group_by(subid, trial_num_full) %>% 
   summarise(m_correct = mean(correct, na.rm = T) %>% round(digits = 2),
             m_gaze_follow = mean(gaze_follow, na.rm = T) %>% round(digits = 2))
@@ -127,10 +125,12 @@ num_shifts_df <- d %>%
          trial_num != "fam", trial.type != "familiar", 
          t.stim <= 4) %>% 
   group_by(subid, trial_num_full) %>% 
-  summarise(num_shifts = get_freq_gaze_shifts(ss_looking_char))
+  summarise(num_shifts = get_freq_gaze_shifts(ss_looking_char, 
+                                              min_fixation_len = 150,
+                                              ms_per_frame = 33))
 ```
 
-Make historgram of number of shifts within each trial.
+Make histogram of number of shifts within each trial.
 
 ```{r}
 qplot(num_shifts_df$num_shifts, bins = 10)
@@ -154,7 +154,7 @@ trial_scores <- d %>%
   purrr::map_df(score_smi_participant)
 ```
 
-Note that the noun and the gaze both started at the beginning of each trial, which makes the first shift accuracy and RT a difficult behavior to anlayze. Instead, we can analyze the frequency of shifting or the proportion of time spent looking at the face vs. objects as an index of the effect of social cues on gaze patterns.
+Note that the noun and the gaze both started at the beginning of each trial, which makes the first shift accuracy and RT a little tricker to understand. I think we can still analyze the frequency of shifting or the proportion of time spent looking at the face vs. objects as an index of the effect of social cues on gaze patterns.
 
 Join with the rest of the Trial-level data. 
 
@@ -199,7 +199,7 @@ d %>%
   pull(n) == 16
 ```
 
-Checks looks good! 
+Checks look good! 
 
 ## Write to file
 

@@ -7,6 +7,7 @@ output: html_document
 rm(list = ls())
 knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
 source("../helper_functions/helper_functions.R")
+source("../helper_functions/ewma_helper_funs.R")
 ```
 
 This script munges and analyzes the data for a project exploring the association between allocation of attention and cross-situational word learning in more or less ambiguous contexts.
@@ -68,15 +69,17 @@ d %>%
   xlab("Proportion Looking") +
   ylab("Count") +
   geom_vline(xintercept = gf_mean, 
-             color = "orange", linetype = "dashed", size = 1) +
+             color = "orange", 
+             linetype = "dashed", 
+             size = 1) +
   theme(text = element_text(size=12))
 ```
 
-Proportion gaze following on exposure trials in the gaze condition is around a mean of 77%. And the distribution is skewed towards 1, meaning people followed gaze.
+Proportion gaze following on exposure trials in the gaze condition is around a mean of 80%. And the distribution is skewed towards 1, meaning people followed gaze.
 
 ## Relationship between looking on exposure and test performance
 
-Create continuous accuracy scores and filter trials where there were fewer than 10 timeslices or 300ms of looking on either exposure or test.  
+Create continuous accuracy scores and filter trials where there were fewer than 8 timeslices or 250ms of fixating on either exposure or test.  
 
 ```{r}
 ss_test <- d_time %>% 
@@ -104,7 +107,10 @@ ss_test %>%
 ## Frequency of gaze shifts
 
 ```{r}
-qplot(d$num_shifts)
+d %>% 
+  ggplot(aes(x = num_shifts)) +
+  geom_line(aes(col = condition), stat = "density", adjust = 1.5, size = 1) +
+  facet_wrap(~trial_type)
 ```
 
 ```{r}
@@ -117,7 +123,9 @@ d %>%
   facet_wrap(~trial_type)
 ```
 
-## Proportion looking to face 
+Some evidence of more shifting on exposure trials in the no-gaze condition, which makes sense considering the broader allocation of attention. 
+
+## Proportion looking to the speaker 
 
 Make a freq polygon to compare attention allocated to face in 
 
@@ -125,27 +133,42 @@ Make a freq polygon to compare attention allocated to face in
 d %>% 
   filter(ss_looking_char == "face") %>% 
   ggplot(aes(x = prop_looking, ..density.., color = condition)) +
-   geom_freqpoly(binwidth = .05, size = 1) + 
+  geom_freqpoly(binwidth = .05, size = 1) + 
   facet_wrap(~trial_type)
 ```
+
+Make a boxplot to summarize looking to face for the different trials and conditions.
+
+```{r}
+d %>% 
+  filter(ss_looking_char == "face") %>% 
+  group_by(subid, condition, trial_type) %>% 
+  summarise(m = mean(prop_looking)) %>% 
+  ggplot(aes(x = condition, y = m, fill = condition)) +
+  geom_boxplot(width = 0.3, notch = F) + 
+  facet_wrap(~trial_type)
+```
+
+Attention allocated to the speaker seems similar across conditions. 
 
 ## First shift behavior
 
 ```{r}
-d_fst_shift <- d %>% filter(shift_start == "face")
+d_fst_shift <- d %>% filter(shift_start == "face", rt <= 2.5)
 ```
 
 Plot distribution of first shift RTs.
 
 ```{r}
-qplot(d_fst_shift$rt)
+ggplot(data = d_fst_shift, aes(x = rt, col = condition)) +
+  geom_line(stat = "density", size = 1) +
+  facet_wrap(~trial_type)
 ```
 
 Time to disengage from the face across conditions (if you happened to be there at the start of the trial out on the face)
 
 ```{r}
 d_fst_shift %>% 
-  filter(rt <= 1.5) %>% 
   group_by(subid, trial_type, condition) %>% 
   summarise(m = median(rt)) %>%
   ggplot(aes(x = condition, y = m)) +
@@ -153,13 +176,15 @@ d_fst_shift %>%
   facet_wrap(~trial_type)
 ```
 
-It looks like an interaction between trial type and condition. On exposure trials, participants are slower to disengage in the gaze condition, but on test trials, participants are faster to disengage.
+It looks like an a main effect of condition and trial type. You are faster to shift away on test trials and in the gaze condition. My first thought is that since the gaze cue starts at the beginning of the trial, it tells you where to look, making you faster to leave the face; whereas you might stick on the face in the no-gaze because of the expectation of useful information. 
 
-Speed accuracy tradeoff?
+This suggests that the timing to disengage measure is different depending on when a speaker provides a useful cue to reference.
+
+Any evidence of a speed accuracy tradeoff?
 
 ```{r}
 d_fst_shift %>% 
-  filter(rt <= 1.5) %>%
+  filter(trial_type == "test") %>% 
   group_by(subid, trial_type, condition, shift_correct) %>% 
   summarise(m = median(rt)) %>%
   ggplot(aes(x = condition, y = m, fill = shift_correct)) +
@@ -171,10 +196,89 @@ First shift accuracy on test trials
 
 ```{r}
 d_fst_shift %>% 
-  filter(rt <= 1, trial_type == "test") %>% 
+  filter(trial_type == "test") %>% 
   group_by(subid, trial_type, condition) %>% 
   summarise(m = mean(shift_correct)) %>% 
   ggplot(aes(x = condition, y = m)) +
   geom_boxplot(width = 0.2, fill = "darkorange") +
   facet_wrap(~trial_type)
 ```
+
+Overall, looks like random shifts away from the speaker on test trials. 
+
+What about first shift accuracy as a function of RT?
+
+```{r}
+d_fst_shift %>% 
+  filter(trial_type == "test") %>% 
+  mutate(rt_bin = cut(rt, breaks = 6)) %>% 
+  group_by(rt_bin, condition) %>% 
+  summarise(m = mean(shift_correct), 
+            num_shifts = n()) %>%
+  ggplot(aes(x = rt_bin, y = m)) +
+  geom_point(aes(size = num_shifts)) +
+  geom_hline(yintercept = 0.5, lty = "dashed") +
+  geom_line(group = 1) +
+  facet_wrap(~condition)
+```
+
+Hmm, tough to interpret accuracy here. Maybe this is a good place for the EWMA approach to model switching accuracy as a function of time?
+
+## EWMA model 
+
+Set model parameters (taken from prior work, e.g., Vanderkerchove et al., 2011)
+
+```{r}
+L <- 2
+lambda <- .01
+cs <- 0.5
+sig <- 0.5
+```
+
+Fit model. Note that I had to use a really small value for the $L$ threshold parameter to even detect any deviation from guessing in these first shifts. 
+
+```{r}
+ewma_results <- d_fst_shift %>% 
+  filter(trial_type == "test") %>%
+  select(subid, condition, rt, shift_correct, shift_start, shift_end, trial_num) %>% 
+  unique() %>% 
+  group_by(condition) %>% 
+  do(fit_ewma(., rt_column = "rt", acc_column = "shift_correct", 
+              L = L, lambda = lambda, cs = cs, sigma = sig)) %>% 
+  mutate(rt = round(as.numeric(rt), 2),
+         cs = round(as.numeric(cs), 2),
+         ucl = round(as.numeric(ucl), 2),
+         guess = ifelse(cs <= ucl, "guess", "response"),
+         guess_num = ifelse(guess == "response", 1, 0),
+         ucl_bound = abs(ucl-cs)) %>% 
+  gather(key = ewma_param, value = param_value, cs:ucl) 
+```
+
+Make the control chart.
+
+```{r}
+control_chart <- aggregate_ewma(ewma_results)
+ribbons <- make_ribbons(control_chart$ewma_summary, control_chart$cutoff_summary)
+# plot
+control_chart$ewma_summary %>% 
+  ggplot(aes(x = rt, y = mean_param, color = ewma_param)) +
+  geom_ribbon(aes(ymin = cs, ymax = ucl, x = rt), fill = "red", alpha = 0.3, 
+                data = ribbons$green, 
+                inherit.aes = F) +
+  geom_ribbon(aes(ymin = cs, ymax = ucl, x = rt), fill = "red", alpha = 0.3, 
+                data = ribbons$green, 
+                inherit.aes = F) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 0.5, linetype = "solid") +
+  labs(x = "RT (sec)", y = "EWMA statistic") +
+  guides(color=F) + 
+  xlim(0, 4) +
+  ylim(0.25, 0.75) +
+  facet_grid(condition~.) +
+  scale_color_manual(values = c("black", "darkgrey")) +
+  geom_dl(aes(label = ewma_param), method = "last.bumpup") +
+  ggthemes::theme_few() +
+  theme(text = element_text(size = 10))
+```
+
+No evidence of non-guessing signal at any point in the RT distribution for either condition. This isn't crazy since participants are just learning these words and they didn't really have time to encode the location of the objects prior to the onset of the novel noun. 

@@ -109,7 +109,8 @@ d %<>% filter(keep_et == "include")
 Here we label Areas of Interest (ss_looking_char) to be Left Picture, Right Picture, and the Center Face. We also add trial number variable.
 
 ```{r}
-d %<>% mutate(condition = ifelse(condition == "nogaze", "no-gaze", 
+d %<>% mutate(condition = ifelse(condition == "nogaze", 
+                                 "no-gaze", 
                                  condition))
 ```
 
@@ -123,15 +124,14 @@ ggplot(aes(x = x, y = y), data = d.rois) +
   lims(x = c(0, 1980))
 ```
 
-
 Bin each timeslice as looking to one of the ROIs or "away"
 
 ```{r ss_looking_char setup}
 d %<>% 
   mutate(ss_looking_factor = case_when(
-    x >= 210 & x <= 750 & y <= 540 ~ "left",
-    x >= 1170 & x <= 1710 & y <= 540 ~ "right",
-    x <= 1230 & x >= 690 & y >= 540 ~ "face",
+    x >= 100 & x <= 750 & y <= 700 & y >= 100 ~ "left",
+    x >= 1170 & x <= 1710 & y <= 700 & y >= 100 ~ "right",
+    x <= 1500 & x >= 500 & y >= 700 ~ "face",
     x == 0 & y == 1050 ~ "missing",
     TRUE ~ "away"
     ),
@@ -139,7 +139,22 @@ d %<>%
   )
 ```
 
-Add trial numbers. TODO: fix this so the trial numbers are added correclty
+Check how well our AOI coding did. 
+
+```{r}
+d %>% 
+  filter(subid == subid[3]) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_line(col = "darkgrey") + 
+  geom_point(aes(col = ss_looking_char), alpha = .3, size = 3) + 
+  facet_wrap(~shortname*trial.type, ncol = 8) + 
+  xlim(c(0,1920)) + 
+  ylim(c(0,1080)) +
+  theme(legend.position = "top") +
+  theme_bw()
+```
+
+Add trial numbers.
 
 ```{r}
 trial_num_vect <- c(c("fam", "fam", "fam", "fam"), seq(1,16))
@@ -162,9 +177,9 @@ We also add a column encoding whether the participant looked at the gaze target 
 
 ```{r}
 d %<>% mutate(correct = ifelse(target_object == ss_looking_char, TRUE, FALSE),
-              correct_char = ifelse(target_object == ss_looking_char, "correct", 
+              correct_char = ifelse(target_object == ss_looking_char, "target", 
                                     ifelse(ss_looking_char == "face", "face",
-                                           "incorrect")),
+                                           "distracter")),
               gaze_follow = ifelse(look == ss_looking_char, TRUE, FALSE))
 ```
 
@@ -174,26 +189,24 @@ Next, let's make another sanity check plot of raw looking behavior over time
 
 ```{r}
 d_plot <- d %>%
-  filter(trial.type != "familiar", ss_looking_char != 'away' | ss_looking_char != "missing") %>% 
+  filter(trial.type != "familiar", 
+         ss_looking_char != 'away', 
+         ss_looking_char != "missing",
+         !is.na(x),
+         !is.na(y)) %>% 
   mutate(x = ifelse(x < 1 | x > 1919, NA, x), 
          y = ifelse(y < 1 | y > 1079, NA, y))
   
 
-ggplot(filter(d_plot, subid == subid[3]), 
+ggplot(filter(d_plot, subid == "020816_01"), 
        aes(x = t.stim, y = x)) + 
-  geom_line() + 
-  geom_point(alpha = .3) + 
-  facet_wrap(~trial_num*trial.type) + 
+  geom_line(col = "darkgrey") + 
+  geom_point(aes(col = ss_looking_char), alpha = .3) + 
+  facet_wrap(~trial_num*trial.type, ncol = 8) + 
   ylim(c(0,1920)) + 
-  geom_hline(yintercept = 1920/2, lty = 2)
-
-ggplot(filter(d_plot, subid == subid[2]), 
-       aes(x = x, y = y, col = t.stim)) + 
-  geom_line() + 
-  geom_point(alpha = .3) + 
-  facet_wrap(~trial_num*trial.type) + 
-  xlim(c(0,1920)) + 
-  ylim(c(0,1080)) 
+  geom_hline(yintercept = 1920/2, lty = 2) +
+  theme_bw() +
+  theme(legend.position = "top")
 ```
 
 ## Interpolation

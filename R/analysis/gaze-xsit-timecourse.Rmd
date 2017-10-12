@@ -23,35 +23,43 @@ d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 
 Here, we create some plots to check the quality of eye tracking data. 
 
-```{r, fig.height=10, fig.width=10}
+```{r}
 d_plot <- d_time %>%
-  filter(trial_num != "fam") %>%
+  filter(trial_num != "fam", !is.na(x), !is.na(y)) %>%
   mutate(x = ifelse(x < 1 | x > 1919, NA, x), 
          y = ifelse(y < 1 | y > 1079, NA, y))
-  
-ggplot(filter(d_plot, subid == subid[30]), 
-       aes(x = t.stim, y = x)) + 
-  geom_line() + 
-  geom_point(alpha = .3) + 
+```
+
+```{r, fig.height=10, fig.width=10}
+d_plot %>% 
+  filter(subid == subid[22]) %>% 
+  ggplot(aes(x = t.stim, y = x)) + 
+  geom_line(col = "darkgrey") + 
+  geom_point(aes(col = ss_looking_char), alpha = .3) + 
   facet_wrap(~trial_num*trial.type, ncol = 8) + 
   ylim(c(0,1920)) + 
-  geom_hline(yintercept = 1920/2, lty = 2)
+  geom_hline(yintercept = 1920/2, lty = 2) +
+  theme(legend.position = "top")
+```
 
-ggplot(filter(d_plot, subid == subid[20]), 
-       aes(x = x, y = y, col = t.stim)) + 
-  geom_line() + 
-  geom_point(alpha = .3) + 
+```{r, fig.height=8, fig.width=12}
+d_plot %>% 
+  filter(subid == subid[22]) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_line(col = "darkgrey") + 
+  geom_point(aes(col = ss_looking_char), alpha = .3) + 
   facet_wrap(~trial_num*trial.type, ncol = 8) + 
   xlim(c(0,1920)) + 
-  ylim(c(0,1080)) 
+  ylim(c(0,1080)) +
+  theme(legend.position = "top")
 ```
 
 ## Timecourse plot
 
 ```{r}
-d.filt <- d_time %>% filter(t.stim > 0, t.stim <= 4,
+d.filt <- d_time %>% filter(t.stim >= 0, t.stim <= 4,
                             trial_num != "fam", trial.type != "familiar",
-                            ss_looking_char != "away")
+                            ss_looking_char %in% c("left", "right", "face"))
 ```
 
 First, we generate curves that represent center, target, and distractor looking over time

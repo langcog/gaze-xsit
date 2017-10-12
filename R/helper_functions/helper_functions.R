@@ -75,10 +75,20 @@ score_smi_trial <- function(trial_df) {
 ## takes a vector of looking values
 ## returns a numeric with the number of shifts
 
-get_freq_gaze_shifts <- function(trial_vect) {
-  # rle counts the number of runs of values in a vector 
-  # note that -1 excludes the last run because there is no shift in the last run
-  rle(x = trial_vect)$values %>% length - 1
+get_freq_gaze_shifts <- function(trial_vect, min_fixation_len = 250, ms_per_frame = 33) {
+  # get the number of frames for minimum fixation
+  num_frames_fixation <- ceiling(min_fixation_len / ms_per_frame) 
+  
+  # rle returns the number of runs ("timeslices") of values in a vector 
+  df <- data.frame(frame_length = rle(x = trial_vect)$lengths,
+                   fixation_location = rle(x = trial_vect)$values)
+  # filter shifts that do not meet min fixation criterion (probably tracker loss)
+  df %<>% filter(frame_length >= num_frames_fixation)
+  
+  # count and return the number of shifts
+  # note that -1 excludes the last run because there is no shift 
+  nrow(df) - 1
+  
 }
 
 
