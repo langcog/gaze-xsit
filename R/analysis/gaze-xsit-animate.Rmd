@@ -20,8 +20,7 @@ d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 ```{r}
 d_plot <- d_time %>%
   filter(t.stim > 0, t.stim <= 4,
-         trial_num != "fam", trial.type != "familiar",
-         ss_looking_char != "away")
+         trial_num != "fam", trial.type != "familiar")
 ```
 
 ## Make the animation of looking behavior unfolding over time
@@ -43,7 +42,7 @@ g <- rasterGrob(img, interpolate=TRUE, width = unit(1,"npc"),
 ```{r}
 p <- d_plot %>% 
   filter(subid == subid[3], trial_num == "1", trial.type == "exposure",
-         t.stim <= 1) %>% 
+         t.stim <= 5) %>% 
   ggplot(aes(x = x, y = y, frame = t.stim)) +
   #annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
   geom_path(aes(cumulative = TRUE), color = "darkgrey") +
@@ -56,5 +55,10 @@ p
 ```
 
 ```{r}
-gganimate(p, interval = .2)
+gganimate(p, interval = .15)
 ```
+
+```{r}
+gganimate(p, interval = .15, "output.gif")
+```
+

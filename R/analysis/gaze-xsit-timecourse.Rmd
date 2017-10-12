@@ -23,26 +23,25 @@ d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 
 Here, we create some plots to check the quality of eye tracking data. 
 
-```{r}
+```{r, fig.height=10, fig.width=10}
 d_plot <- d_time %>%
   filter(trial_num != "fam") %>%
   mutate(x = ifelse(x < 1 | x > 1919, NA, x), 
          y = ifelse(y < 1 | y > 1079, NA, y))
   
-
-ggplot(filter(d_plot, subid == subid[1]), 
+ggplot(filter(d_plot, subid == subid[30]), 
        aes(x = t.stim, y = x)) + 
   geom_line() + 
   geom_point(alpha = .3) + 
-  facet_wrap(~trial_num*trial.type) + 
+  facet_wrap(~trial_num*trial.type, ncol = 8) + 
   ylim(c(0,1920)) + 
-  geom_hline(yintercept = 1920/2, lty =2 )
+  geom_hline(yintercept = 1920/2, lty = 2)
 
-ggplot(filter(d_plot, subid == subid[2]), 
+ggplot(filter(d_plot, subid == subid[20]), 
        aes(x = x, y = y, col = t.stim)) + 
   geom_line() + 
   geom_point(alpha = .3) + 
-  facet_wrap(~trial_num*trial.type) + 
+  facet_wrap(~trial_num*trial.type, ncol = 8) + 
   xlim(c(0,1920)) + 
   ylim(c(0,1080)) 
 ```
