@@ -7,13 +7,13 @@ output: html_document
 ```{r chunk opts}
 rm(list = ls())
 knitr::opts_chunk$set(echo=T, warning=F, cache=F, message=F, sanitize = T)
-source("../helper_functions/helper_functions.R")
+source("../../helper_functions/helper_functions.R")
 ```
 
 Read data.
 
 ```{r}
-d_time <- read_csv("../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
+d_time <- read_csv("../../../data/3_tidy_data/gaze_xsit_tidy_timecourse.csv")
 ```
 
 
@@ -25,8 +25,6 @@ d_plot <- d_time %>%
 
 ## Make the animation of looking behavior unfolding over time
 
-TODO: get the stimuli images on the plot. 
-
 ```{r}
 library(gganimate)
 library(png)
@@ -34,32 +32,65 @@ library(grid)
 ```
 
 ```{r}
-img <- readPNG("stim.png")
-g <- rasterGrob(img, interpolate=TRUE, width = unit(1,"npc"), 
-                               height = unit(1,"npc"))
+black_theme <- ggthemes::theme_few() + 
+  theme(axis.line=element_blank(), axis.text.x=element_blank(),
+        axis.text.y=element_blank(), axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(), legend.position="bottom",
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),plot.background=element_blank(),
+        panel.background = element_rect(fill = "black", color  =  NA))
+```
+
+
+```{r}
+speaker_img <- readPNG("speaker.png")
+left_img <- readPNG("left_stim.png")
+right_img <- readPNG("right_stim.png")
+```
+
+```{r}
+speaker_g <- rasterGrob(speaker_img, interpolate=TRUE, 
+                x = unit(0.5, "npc"), y = unit(0.75, "npc"),
+                width = unit(0.3,"npc"), 
+                height = unit(0.3,"npc"))
+
+left_g <- rasterGrob(left_img, interpolate=TRUE, 
+                x = unit(0.25, "npc"), y = unit(0.35, "npc"),
+                width = unit(0.25,"npc"), 
+                height = unit(0.25,"npc"))
+
+right_g <- rasterGrob(right_img, interpolate=TRUE, 
+                x = unit(0.75, "npc"), y = unit(0.35, "npc"),
+                width = unit(0.25,"npc"), 
+                height = unit(0.25,"npc"))
 ```
 
 ```{r}
 p <- d_plot %>% 
-  filter(subid == subid[3], trial_num %in% c("4", "10", "12"), trial.type == "exposure",
-         t.stim <= 5) %>% 
+  filter(subid == subid[3], trial_num %in% c("4"), trial.type == "exposure",
+         t.stim <= 4) %>% 
+  mutate(run_length = seq(1, n())) %>% 
   ggplot(aes(x = x, y = y, frame = t.stim)) +
-  #annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  annotation_custom(speaker_g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  annotation_custom(left_g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  annotation_custom(right_g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
   geom_path(aes(cumulative = TRUE), color = "darkgrey") +
-  geom_point(aes(cumulative = TRUE), shape = 21, size = 5, color = "black",
-             fill = "darkorange", size = 5, stroke = 1, alpha = 0.4) +
+  geom_point(aes(cumulative = TRUE), size = 5, shape = 21, 
+             color = "white", fill = "darkorange", stroke = 1,
+             alpha = 0.5) +
   guides(color = F) + 
-  xlim(-20,1980) +
-  ylim(0, 1020+60) +
-  facet_wrap(~trial_num)
+  xlim(0,1750) +
+  ylim(200, 1080) +
+  labs(x="", y = "") +
+  black_theme
 p
 ```
 
-```{r}
-gganimate(p, interval = .15)
-```
+Save the gif. 
 
-```{r}
-gganimate(p, interval = .1, "output.gif")
+```{r, eval = F}
+gganimate(p, interval = .1, "output.mp4", title_frame = F)
 ```
 
