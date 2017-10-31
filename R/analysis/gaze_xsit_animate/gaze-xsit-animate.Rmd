@@ -1,5 +1,5 @@
 ---
-title: "Gaze-xsit Looking Animation"
+title: "Speed-Acc Looking Animation"
 author: "Kyle MacDonald"
 output: html_document
 ---
