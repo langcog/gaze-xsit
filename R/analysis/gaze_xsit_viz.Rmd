@@ -37,15 +37,15 @@ d %>%
 Plot proportion correct and incorrect looking on exposure trials (looking at the object that will show up again at test) for each ss for each trial. We will use this to predict correct looking at test. 
 
 ```{r}
-d %>% 
+exposure_plot <- d %>% 
   distinct(subid, trial_num, trial_type, .keep_all = T) %>% 
+  filter(trial_type == "exposure") %>% 
   ggplot(aes(x = m_correct, color = condition)) +
   geom_histogram(binwidth = 0.05, fill = "grey") +
   guides(color=F) +
-  xlab("Proportion Looking") +
+  xlab("Prop. Looking") +
   ylab("Count") +
-  theme(text = element_text(size=12)) +
-  facet_grid(trial_type ~ condition) +
+  facet_wrap(~condition, ncol = 1) +
   langcog::scale_color_solarized() 
 ```
 
@@ -94,15 +94,20 @@ ss_test <- d_time %>%
 
 ```{r}
 # plot the relation between acc on exposure and acc on test
-ss_test %>% 
+test_plot <- ss_test %>% 
   ggplot(aes(x = exposure, y = test, color = condition)) +
   geom_point(alpha = 0.3) + 
   geom_smooth(method = "lm", se = T, size = 2) +
   langcog::scale_color_solarized() +
   geom_hline(yintercept = 0.5, lty = "dashed") +
-  labs(y = c("Proportion Looking Test"), 
-       x = c("Proportion Looking Exposure"))
+  labs(y = c("Prop. Looking Test"), 
+       x = c("Prop. Looking Exposure"))
 ```
+
+```{r}
+cowplot::plot_grid(exposure_plot, test_plot, rel_widths = c(1, 1.8), labels = c("A", "B"))
+```
+
 
 ## Frequency of gaze shifts
 
